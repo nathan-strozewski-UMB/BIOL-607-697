@@ -1,0 +1,157 @@
+---
+title: 'Homework 1: Intro to R!'
+author: "Nathan Strozewski"
+date: "2022-09-12"
+output: html_document
+---
+
+## Part 1 ##  
+
+### 1a: Load quakes with data(quakes)
+
+```{r loading_quakes}  
+
+data(quakes)  
+quakes 
+
+```
+
+### 1b: Show what’s there with str() and summary(). What do you see?
+
+```{r info_quakes}
+
+str(quakes) 
+summary(quakes) 
+
+```
+
+##### Notes:
+    1. str() - variables are lat, long, depth, mag, stations
+    2. summary() - min, max, median, quartiles for each variable
+
+## Part 2 ##
+
+### 2a: Show the entirety of the column long
+
+```{r long_quakes}  
+
+quakes[,"long"]
+
+```
+
+## Part 3 ##
+
+### Part 3a: Hey, another useful function - unique()! 
+    1. Apply it to a vector, and you can see what are all of the unique values ...
+       It’s great for really digging into a problematic vector.<li>
+
+```{r unique_quakes}
+
+unique(quakes)
+unique(quakes[,"long"])
+unique(quakes[,"mag"])
+
+```
+
+### Notes:
+    1. unique() returns the entered vector with duplicate data points remove
+    2. unique() can be applied to an entire dataset or specific rows/cols
+    3. I applied to cols here to test
+
+## Part 4 ##
+
+### Part 4a: What unique stations are there?
+    1. Use length() with unique() to determine how many stations there are
+
+```{r length_quakes}  
+  
+length(unique(quakes[,"stations"]))  
+  
+```
+
+### Notes:
+    1. I tested **?length** in the console to understand the new function
+    2. I then established **(unique(quakes[,"stations"]))**
+    3. I then applied **length(x)** where **x = (unique(quakes[,"stations"]))**
+    4. Result: There are **102** unique stations in the quakes dataset
+
+## Part 5 ##
+
+### Part 5a: Using range(), what is the range of depths where quakes occur?
+
+```{r range_quakes}
+
+range(quakes[,"depth"])
+
+```
+
+### Notes:
+    1. I tested **?range** in the console to understand the new function
+    2. I then applied **range(x)** to **dataset[row,col] ...**
+    3. where dataset is quakes, row is all (,) and col is "depth"
+    4. Result: **40 - 680**
+
+## Part 6 ##
+
+### Part 6a: Where was the earthquake of largest magnitude found? 
+    You’ll need to use some comparisons and the max() function for this ...
+    in your indices instead of a number!
+
+```{r which.max_quakes}
+
+quakes[which.max(quakes[,"mag"]),]
+
+```
+
+### Notes:
+    1. I first tested max on "mag" variable to know what value I was looking for ... 
+    **max(quakes[,"mag"]) returned = 6.4**
+    2. I then looked into **?which.max** to understand its usage
+    3. Then I applied which.max to locate the index of the max "mag" value ...
+    **which.max(quakes[,"mag"]) returned 152**
+    4. I then pulled index 152 from the quakes dataset ...
+    to see the lat, long, depth, and station values at the max ...
+    **quakes[152,]** returned the: ...
+    **lat, long, depth, and station values at mag 6.4**
+    5. I cross-checked the mag (6.4) with max(quakes[,"mag"]) and it matched
+    6. Lastly, I wanted to condense all these lines of code into one line
+    7. I indexed quakes, with the row being the which.max line of code ...
+    and the column being all (,)
+    8. I cross-checked the return with that from quakes[152,] and it matched
+
+## Part 7 - Meta Questions ##
+
+### Meta 1.a.: How did it feel to connect concepts to a novel set of problems.
+    1. This was incredibly helpful and hopefully how the course will continue
+    2. Applying the concepts and skills helped me to better understand them
+    3. I made many mistakes along the way that I learned from
+
+###  Meta 1.b.: If you have experience with R, was this a cakewalk or challenging?
+    1. I have dabbled with R for "fun" and have used MATLAB fairly extensively
+    2. The biggest learning curve is switching over languages in my head
+    3. I am not multi-lingual, but I imagine it is a similar mental switch
+    4. For example, I keep typing % to comment instead of #
+    5. Little mistakes like that add a lot of time and detract from focus
+    6. I feel comfortable following the logic of R coding but do always need to check whether what I type is logical
+    7. The biggest challenge is not knowing what options (i.e., functions) exist to solve the problem i am working on
+    8. But I guess that's what Google and stack overflow are for!
+    9. It's great that R detects error in code and suggests alternatives
+
+### Meta 1.c.: How did it feel to shake off the cobwebs?
+    1. Great! I am really enjoying this class
+    2. It is great to take a class solely dedicated to developing a skill
+    3. Rather than building a knowledge base
+    4. I am very excited to continue
+    5. The litany of resources + degree of organization for this class is very helpful
+
+### Meta 2.: How much time did this take you, roughly?
+    1, Approx. 1 hour for code, 30 min for markdown
+    2. I really took my time to read into each function that I used
+    3. Spend more time now to understand = spend less time on misunderstandings later!
+
+### Meta 3.: Please give yourself a weak/sufficient/strong assessment
+    1. I performed strongly on this assignment
+    2. Good recall of the material we covered in class/lab
+    3. Took time to read into each function
+    4. Tested multiple ways to apply them
+    5. Once I finished the question, I tried to consolidate the code into as few lines, functions, etc. as possible to improve my understanding, logic, and efficiency
