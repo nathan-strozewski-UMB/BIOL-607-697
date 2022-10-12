@@ -1,0 +1,376 @@
+---
+title: 'Homework #4 Iteration and Functions'
+author: "Nathan Strozewski"
+date: "2022-10-12"
+output: html_document
+---
+
+# Part 0: Intro
+
+## Load libraries
+
+```{r part_0_load}
+library(tidyverse)
+```
+
+## Set ggplot theme
+
+```{r part_0_theme}
+theme_set(theme_classic(base_size = 12))
+```
+
+# Part 1: Basic function and iteration
+
+##  Part 1a: Write a function that takes no arguments but tells you “You’re doing a great job!”
+
+```{r part_1a}
+function_1a <- function(x){
+  ret_value <- paste(x)
+  return(ret_value)
+}
+function_1a("You're doing a great job!")
+```
+
+## Part 1b: Have it tell you this 10 times. Use replicate() for the first five and map_chr() for the second 5.
+
+```{r part_1b}
+function_1b_rep <- as.character(replicate(n = 5, function_1a("You're doing a great job!")))
+function_1b_rep
+
+function_1b_map <- map_chr(1:5, ~ function_1a("You're doing a great job!"))
+function_1b_map
+
+paste(function_1b_rep) %>% 
+  paste(function_1b_map)
+```
+
+## Part 1c: Impress Yourself: try purrr:::walk()
+
+```{r part_1c}
+paste(function_1b_rep) %>% 
+  paste(function_1b_map) %>% 
+  walk(print)
+```
+
+### How does it differ from map()? 
+    1. map() applies the function to each item in a collection.
+    2. walk() applies a function that performs an action instead of producind data
+
+### Do you need to modify the function to make it work?
+    1. I did not. Perhaps that means I didn't do it correctly.
+    2. This is the resouce I used: https://dcl-prog.stanford.edu/purrr-extras.html#walk
+
+# Part 2: Visualizing the exponential distribution
+
+## Part 2a: 
+
+### Write a function that takes a rate, a minimum, and maximum as its inputs, defaults for min and max be 0 and 4, and returns a data frame or tibble with three columns.
+### The first column is the rate (the input), the second is a sequence of 100 numbers between the min and max, and the third is the probability density of the exponential distribution at that value given the rate
+
+```{r part_2a}
+set.seed(1000)
+
+part_2a <- function(a = 0,
+                    b = 0,
+                    c = 4) {
+  seq_betw_min_max = runif(100, min = b, max = c)
+  prob_dens_exp_dist = dexp(seq_betw_min_max, rate = a)
+  return(data.frame("Rate" = a,
+                     "Sequence_between_min_max" = seq_betw_min_max,
+                     "Prob_dens_exp_dist" = prob_dens_exp_dist))
+}
+part_2a_df_rate3 <- part_2a(3, 0, 4)
+part_2a_df_rate3
+```
+
+### Show that your function works by making a ggplot for rate = 3
+
+```{part_2a_cont}
+library(ggplot2)
+
+ggplot(part_2a_df_rate3) +
+  xlim(c(0, 4)) +
+  ylim(c(0, 4)) +
+  geom_line(mapping = aes(x = part_2a_df_rate3$Sequence_between_min_max,
+                          y = part_2a_df_rate3$Prob_dens_exp_dist)) +
+  labs(title = "Probability density of an exponential distribution",
+       subtitle = "At rate = 3",
+       x = "Value",
+       y = "Probability density")
+
+ggplot(part_2a(3, 0, 4)) +
+  geom_line(mapping = aes(x = part_2a$Sequence_between_min_max,
+                          y = part_2a$Prob_dens_exp_dist))
+```
+
+## Part 2b:
+
+### Use purrr::map_df() and a vector of rates: c(0.2, 0.5, 1, 2, 4) to create a data frame or tibble with the above function that for each rate, has values of x and the probability density of x
+
+```{r part_2b}
+part_2b <- map_df(c(0.2, 0.5, 1, 2, 4),
+      part_2a)
+part_2b
+```
+
+## Part 2c: 
+
+### Plot the result in a way that shows the influence of rate on the shape of the curve. 
+
+```{r part_2c}
+part_2c <- part_2b %>% 
+  group_by(Rate) %>% 
+  ggplot(data = part_2b,
+         mapping = aes(x = ,
+                       y = ))
+  
+  ggplot(data = part_2b,
+                  mapping = aes(x = Sequence_between_min_max,
+                                y = Prob_dens_exp_dist,
+                                group = Rate,
+                                color = Rate)) +
+    labs(title = "Effect of Rate on Probability Density",
+         subtitle = "HW04, Part 2c",
+         x = "Value",
+         y = "Probability Density") +
+  geom_point() +
+  geom_line()
+```
+
+### What do higher or lower rates do to the shape of an exponential distribution?
+    1. higher rates = sharper drop, lower rates = flatter drop
+
+# Part 3: Precision and Sampling the Exponential
+
+## Part 3a: 
+
+### Write a function that, given a vector, will return a data frame or tibble of that vector with a mean and median.
+
+```{r part_3a}
+part_3a <- function(x) {
+  mean_formula_3a = mean(x)
+  med_formula_3a = median(x)
+  return(list(c(mean_formula_3a, med_formula_3a)))
+}
+```
+
+### Test is with a vector to make sure it’s doing the right thing
+
+```{r part_3a_cont}
+part_3a(c(1, 2, 3, 4, 5))
+part_3a(c(10, 100, 1000))
+```
+
+## Part 3b:
+
+### Write a function that, given a sample size and a rate, takes a sample from an exponential distribution and then use the above function to return the mean and median as a data frame.
+
+### Show us it works.
+
+```{r part_3b}
+part_3b <- function(n = 0,
+                    x = 0){
+  set.seed(3000)
+  values = runif(n, min = 0, max = 1)
+  exp_dist = dexp(values, rate = x)
+  sample_mean = mean(exp_dist)
+  sample_med = median(exp_dist)
+  set.seed(3000)
+  return(data.frame("Rate" = x,
+                    "Mean" = sample_mean,
+                    "Median" = sample_med))
+}
+part_3b(n = 10, x = 3)
+part_3b(1000, 0.5)
+```
+
+## Part 3c: 
+
+### Write a function that, given a sample size, rate, and number of simulations (which defaults to 1e3), returns a data frame with however many rows of means and medians given your number of simulations. 
+
+### Show it works by plotting the distribution of means and medians for rate = 2 and sample size = 10. 
+
+```{r part_3c}
+# set assumptions
+sample_size = 10
+rate = 2
+simulations = 1e3
+sample_df = data.frame(1:sample_size)
+
+# one sim
+part_3c_onesim <- function(sample_size,
+                           rate,
+                           simulations) {
+  values = runif(sample_size, min = 0, max = 1)
+  exp_dist = dexp(values, rate = rate)
+  sample_mean = mean(exp_dist)
+  sample_sd = sd(exp_dist)
+  sample_med = median(exp_dist)
+  data.frame("Sample_Size" = sample_size,
+               "Rate" = rate,
+               "Mean" = sample_mean,
+               "Median" = sample_med)
+}
+part_3c_onesim(sample_size, rate, simulations)
+# iterate
+part_3c_iter <- function(sample_size,
+                         rate,
+                         sample_mean,
+                         sample_med,
+                         simulations) {
+  map_df(1:simulations,
+         ~part_3c_onesim(sample_size,
+                         rate,
+                         simulations))
+}
+part_3c_iter(sample_size = 10, rate = 2, simulations = 1e3)
+
+part_3c_results <- sample_df %>% 
+  summarize(part_3c_iter(simulations = simulations,
+                         sample_size = sample_size,
+                         rate = rate,
+                         sample_mean = sample_mean,
+                         sample_med = sample_med))
+part_3c_results
+```
+
+## Part 3d: 
+
+### Use the function tidyr::crossing() to make a tibble with all possible combinations of sample sizes c(3,5,7,9) and rate c(1, 1.5, 2, 4). 
+
+```{r part_3d}
+sample_size = c(3, 5, 7, 9)
+rate = c(1, 1.5, 2, 4)
+part_3d <- crossing(
+  "Sample_Size" = sample_size,
+  "Rate" = rate)
+part_3d
+```
+
+## Part 3e: 
+
+### With this data frame, use group_by() on sample size and rate and summarize on combination with the simulation function above to get simulated means and medians at all different parameter combinations. 
+
+### Show us you have done so by plotting the distributions of your medians  using facet_grid() to split up rate/sample size combinations.
+
+```{r part_3e}
+part_3e <- part_3d %>% 
+  group_by(Sample_Size, Rate) %>% 
+  summarize(part_3c_iter(sample_size = Sample_Size,
+                         rate = Rate,
+                         simulations = 1e3))
+
+part_3e_plot <- ggplot(data = part_3e,
+                       aes(x = Mean,
+                           y = Median)) +
+  labs(title = "Simulated Means & Medians for All Parameter Combinations",
+       subtitle = "Part 3e",
+       x = "Mean",
+       y = "Median") +
+  stat_summary(aes(x = Mean,
+                   y = Median), 
+               geom = "line",
+               size = 0.5,
+               alpha = 0.5)
+part_3e_plot
+
+part_3e_plot +
+facet_grid(Sample_Size ~ Rate)
+```
+
+## Part 3f: 
+
+### With this result, group by rate and sample size again and calculate the sd of each measure.
+
+### Then plot the resulting curves showing the influence of sample size on the precision of our estimate for mean and median. 
+
+```{r part_3f}
+part_3f <- part_3e %>% 
+  group_by(Sample_Size, Rate) %>%
+  mutate(mean_sd = sd(Mean)) %>% 
+  mutate(med_sd = sd(Median))
+part_3f
+```
+
+```{r part_3f_mean}
+part_3f_mean_plot <- ggplot(data = part_3f,
+                            mapping = aes(x = Sample_Size,
+                                          y = mean_sd,
+                                          group = Rate,
+                                          color = Rate)) +
+  geom_point() +
+  geom_line() +
+  labs(title = "Influence of Sample Size on Precision of Mean Estimate",
+       subtitle = "By Rate",
+       x = "Sample Size",
+       y = "Precision of Mean Estimate (sd)",
+       legend = "Rate")
+part_3f_mean_plot
+```
+
+```{r part_3f_med}
+part_3f_med_plot <- ggplot(data = part_3f,
+                            mapping = aes(x = Sample_Size,
+                                          y = med_sd,
+                                          group = Rate,
+                                          color = Rate)) +
+  geom_point() +
+  geom_line() +
+  labs(title = "Influence of Sample Size on Precision of Median Estimate",
+       subtitle = "By Rate",
+       x = "Sample Size",
+       y = "Precision of Median Estimate (sd)",
+       legend = "Rate")
+part_3f_med_plot
+```
+
+### What does this tell you?
+    1. This suggests that higher sample sizes result in lower st.dev. for both mean and medians
+    
+## Part 3g: 
+
+### What should your sample size be and why under different rates?
+    1. The sample size should be as large as possible for both mean and median, regardless of rate.
+    2. In this dataset, the sample size should be 9.
+    3. The standard deviation of both the mean and median decrease as sample size increases, with a sample size of nine having the lowest standard deviation.
+
+# Meta Questions
+
+## Meta 1:
+
+### Whew. We covered a lot this week. How much of this - functions and iteration - was new to you? How much of it was familiar or at least made sense? How much was totally alien and offputting?
+    1. The concepts of functions was familiar but I had little experience with iteration.
+    2. The concept of ieration made sense, but I had to do a decent amount of practice to understand how to use it.
+
+## Meta 2: 
+
+### What are possible uses you could see using functions for? What about iteration?
+    1. Functions are really nice because they allow you to encode a process once and reuse it in any scenario you want later. They will save a TON of time and effort in the long run, as well as make scripts cleaner to read and use.
+    2. Iterations seem nice because you can quickly run something as many times you want under whatever parameters you want.
+
+## Meta 3:
+
+### How did your progress through this assignment feel? Did you find yourself speeding up as you went along? Are there things that clicked for you along the way? Lightbulbs going off.
+    1. I actually did speed up as I went a long. 
+    2. I struggled a lot on the later parts of 2 and the early parts of 3. It seemed like I only had the brain power to figure out one piece at a time before taking a break.
+    3. Once I got through a couple pieces, things started to click and I was able to move through the back half of 3 quickly and intentionally
+
+## Meta 4:
+
+### There are a lot of things that also re-appear this week. ggplot, tidyr and pivoting, dplyr, pipes, and more. Are they becoming old friends? What apsects of them are you still struggling with, if at all?
+    1. I am getting more comfortable with ggplot and feel confident using dplyr now.
+    2. Knowing when to pivot wide or long is still a bit confusing to me, so I will revisit the materials this week to review that.
+    3. I LOVE piping. It makes things very easy and clean
+
+## Meta 5:
+
+### How much time did this take you, roughly? Again, I’m trying to keep track that these assignments aren’t killer, more than anything.
+    1. This took me 6 hours
+
+## Meta 6:
+
+### Please give yourself a weak/sufficient/strong assessment on this assignment. Feel free to comment on why.
+    1. I will rate myself as strong this week. 
+    2. There were perhaps a few things I could have cleaned up.
+    3. And it took me a WHILE to move through some problems.
+    4. But I gained steam towards the end and felt confident working through the challenges as time went on.
