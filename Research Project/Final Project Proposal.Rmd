@@ -1,0 +1,53 @@
+---
+title: "Final Project Proposal"
+author: "Nathan Strozewski"
+date: "2022-10-27"
+output: html_document
+---
+
+### **Proposal 1: Characterizing the Capicua Interactome**
+
+#### Background
+    The transcriptional repressor Capicua regulates processes such as cell growth, survival, and differentiation. This regulation controls the tissue patterning, organ growth, and embryogenesis in *Drosophila*, and the development of the lungs, brain, and immune system in humans. Gain-of-function mutations to Capicua result in over-repression that leads to developmental defects and neurodegenerative diseases, while loss-of-function mutations result in several cancers. The mechanism of Capicua's function is unknown, and the pathophysiology of Capicua-related diseases is therefore not understood. A key roadblock to understanding Capicua function is a limited knowledge of Capicua's protein interactome. Elucidating this interactome will provide insight into the classes of proteins that Capicua interacts with and the mechanisms in which it is regulated. I am currently conducting affinity purification mass spectrometry to elucidate the interactome then plan ton conduct gene ontology analysis to identify the roles of the identified interactors.
+
+#### Research Question(s)
+    1. What proteins does  Capicua interact with?  
+    2. What classes of proteins does Capicua most strongly interact with?
+    3. What can be inferred about the regulation of Capicua from this interactome?
+
+#### Data
+    1. Affinity-purification mass spectrometry data set
+    2. Gene ontology analysis
+   
+#### Analyses
+    1. Strength of individual interaction
+    2. Statistical significance of individual interaction
+    3. Correlation of Capicua interaction to protein classes
+
+#### Notes  
+    I am currently working to collect this interactome data via affinity purification mass spectrometry. It is possible that I do not have the data collected in time for this project, so I will provide a backup (fun) proposal, as well.
+
+
+### **Proposal 2: Analyzing Slider Usage Trends in Major League Baseball**
+
+#### Background
+  Pitch usage in Major League Baseball has recently trended away from a curveball- to slider-heavy approach.
+
+
+#### Research Question(s)
+    1. How has slider pitch changed over time?
+    2. How does this compare to usage of other pitches over time?
+    3. Have rates in the pitches that are paired (thrown before or after) changed over time? 
+    4. Are there certain pitch counts that the slider is thrown in?
+    3. How have pitch factors of these pitches changed over time (spin rate, speed, etc.)?
+    4. How have pitch outcomes changed over time (hard hit rate, OPS+, barrel %, BABIP, chase rate, contact rate, etc.)
+
+#### Data
+    1. Data will be downloaded from Statcast (the official data tracker of MLB; free to public)
+
+#### Analyses
+    1. Plot historical pitch usage over time; review recent trends
+    2. Count pitch counts in which slider is used over time (different lines per count)
+    3. Plot pitch factors for each pitch over time
+    4. Plot pitch outcomes for each pitch over time; correlate to usage trends?
+
