@@ -1,0 +1,1304 @@
+---
+title: "Strozewski_Nathan_BIOL607_Midterm"
+author: "Nathan Strozewski"
+date: "2022-11-22"
+output: html_document
+---
+
+## **General Notes**
+
+I have included the prompts here to provide context to my code and responses. I have also included library() commands whenever applicable, even if not the first time the library is being called, to clearly outline what I am doing here and what I need. I don't and won't do this in the real world because it is a waste of space.
+
+I took a stab at all of the Impress Yourself's. I didn't quite get them all, but learned a lot along the way.
+
+Lastly, I submitted an initial version of this Midterm Exam at 4:59p to meet the deadline. That submission included all required components. I felt like cleaning things up more, working on more of the Impress Yourself's, and giving better answers to the Meta Questions. This is my submission that contains that. Since this is coming in after the submission deadline, I do not expect any of the updates to be considered in grading. I did this for my own learning and not for a better grade.
+
+Cheers!
+
+## **Question 1: Sampling your system**
+
+*Each of you have a study system you work in and a question of interest. Give an example of one variable that you would sample in order to get a sense of its variation in nature. Describe, in detail, how you would sample for the population of that variable in order to understand its distribution. Questions to consider include, but are not limited to: Just what is your sample versus your population? What would your sampling design be? Why would you design it that particular way? What are potential confounding influences of both sampling technique and sample design that you need to be careful to avoid? What statistical distribution might the variable take, and why?*
+
+I am currently working to characterize the interactome of the transcriptional repressor Capicua (CIC) by identifying CIC interactors. Once identified and validated, I want to determine whether they are involved in regulating CIC function. I plan to conduct a series of overexpression and RNAi experiments, in which I will either overexpress or knockdown the interactor and CIC, simultaneously, in *Drosophila*. I will then observe the development of the wing, where CIC is known to regulate size, number of veins, and vein arborization. For example, CIC overexpression leads to a wing smaller, with fewer and shorter veins, while knockdown or knockout leads to a larger wing with more and longer veins. When compared to these baseline phenotypes, and deviation in wing size, vein length, and vein arborization, can be attributed to the overexpression or knockdown of the interactor. The role of the interactor in the CIC pathway can then be inferred.
+
+In this experiment, I aim to draw conclusions about the function of CIC in *Drosophila melanogaster* (population) from a set of flies (sample) that I have overexpressed or knocked down CIC in. There are several potential confounding variables in this experiment, including temperature, age, sex, and the variability of the overexpression or RNAi effect across individuals. Foremost, I will conduct all genetic crosses and rearing at 25^o C to remove the potential confound of temperature on protein expression and organism development. This will also cause all progeny to mature at the same rate, so I will collect progeny 12 hours after eclosion to ensure collection of only mature individuals of the same age. I will collect data from males and females separately. I will not be able to control the exact protein levels induced by overexpression or knockdown on the individual level, but I will use the same UAS/Gal4 system to drive protein overexpression or knockout for both CIC and the interactor, across experiments. I will quantify protein expression, post-data collection, via Western Blot and image analysis. The level of protein will be compared to controls to determine overall levels of overexpression or knockdown. However, I will not be able to do this on the individual level as not enough protein would be present for detection via Western Blot. I will therefore need to conduct this experiment across the entire group that was sampled.
+
+The data points will be continuous because my independent variables have an infinite number of potential outcomes. Due to the aforementioned variability in the amount of protein present after overexpression or knockdown, I expect the data to take on a Gaussian (normal, continuous) distribution.
+
+
+## **Question 2: Data Reshaping and Visuzliation**
+
+*Johns Hopkins has been maintaining one of the best Covid-19 timseries data sets out there. The data on the US can be found here with information about what is in the data at https://github.com/CSSEGISandData/COVID-19/tree/master/csse_covid_19_data*
+
+### **Design a theme**
+
+Before proceeding, I would like to establish a theme for my plots through this midterm. My design goals are to make the plots simple, clear, and well-spaced.
+
+```{r plot_theme}
+
+custom_theme <- function(){ 
+  font <- "Helvetica" # font selection
+    
+    theme_minimal() %+replace% # theme based on minimal with following replacements
+    
+    theme(
+      
+      panel.grid.major = element_blank(), # leave grids and axis ticks blank
+      panel.grid.minor = element_blank(),    
+      axis.ticks = element_blank(),
+      axis.line = element_line(color = "black",
+                               size = 1),
+      panel.border = element_rect(color = "black",
+                                  fill=NA,
+                                  size=1),
+      plot.title = element_text(family = font,            
+                   size = 20,                
+                   face = 'bold',            
+                   hjust = 0.5, # move title to center horizontally
+                   vjust = 2), # move title up a wee bit
+      plot.subtitle = element_text(         
+                   family = font,           
+                   size = 15,
+                   hjust = 0.5),               
+      plot.caption = element_text(           
+                   family = font,           
+                   size = 10,                 
+                   hjust = 1), # put caption in right corner
+      axis.title = element_text(             
+                   family = font,
+                   face = 'italic',
+                   size = 15),               
+      axis.text = element_text(              
+                   family = font,            
+                   size = 10),               
+      axis.text.x = element_text(            
+                    margin = margin(t = 2, # top
+                                    r = 2, # right
+                                    b = 2, # bottom
+                                    l = 2)) # left
+    )
+}
+```
+
+
+### **2a: Download**
+
+*Download and read in the data. Can you do this without downloading, but read directly from the archive?*
+
+#### Step 1: Download and read the data directly from the archive
+
+```{r 2a_download}
+
+library(readr)
+
+covid <- read.csv("https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_US.csv")
+
+```
+
+
+#### Step 2: Look at the data
+
+```{r eval = FALSE}
+
+str(covid)
+summary(covid)
+
+```
+
+
+#### Step 3: Upload data that contains incidents per 100,000 people
+
+```{r message = FALSE}
+
+setwd("/Users/nathanstrozewski/Downloads/Biological Data Analysis/Midterm/Data/daily incidence files/")
+      
+library(data.table) # make data tables
+library(dplyr) # pipes
+library(tidyr) # allows loading of purrr
+library(purrr) # map
+
+covid_incidents <- list.files(path = "/Users/nathanstrozewski/Downloads/Biological Data Analysis/Midterm/Data/daily incidence files/",
+                              pattern = "*.csv") %>% 
+  map_df(~fread(.)) %>% 
+  as.data.frame()
+
+```
+
+
+### **2b: It's big and  wide!**
+
+*The data is, well, huge. It’s also wide, with dates as columns. Write a function that, given a state name as its input argument, will output a time series (long data where every row is a day) with columns for date, new daily cases and for cumulative cases in that state.*
+
+*Note, let’s make the date column that emerges a true date object. Let’s say you’ve called it date_col. If you mutate it, mutate(date_col = lubridate::mdy(date_col)), it will be turned into a date object that will have a recognized order. {lubridate} is da bomb, and I’m hoping we have some time to cover it in the future.*
+
+*Even better - impress yourself (if you want - not required!) and merge it with some other data source to also return cases per 100,000 people.*
+
+
+```{r message = FALSE}
+
+library(lubridate) # date stuff
+library(dplyr) # data manip
+library(tidyr) # pivot
+
+table_function <- function(Province_Input) {
+  
+  covid_state <- covid %>%
+  filter(Province_State %in% Province_Input) %>%
+  select(-c(UID, iso2, iso3, code3, FIPS, Admin2, Country_Region, Lat, Long_, Combined_Key)) %>%
+  pivot_longer(cols = -Province_State,
+               names_to = "date_col",
+               values_to = "cumulative_cases") %>%
+  mutate(date_col = gsub("\\X", "", date_col)) %>%
+  mutate(date_col = lubridate::mdy(date_col)) %>%
+  dplyr::group_by(date_col) %>%
+  dplyr::summarise(cumulative_cases = sum(cumulative_cases)) %>%
+  mutate(new_cases = cumulative_cases - lag(cumulative_cases, default = first(cumulative_cases)))
+
+  date_appendage <- data_frame(date_col = seq(as.Date("2020-01-22"),
+                                                 as.Date("2020-04-11"),
+                                                 by = "days"),
+  incident_rate = NA) # create df with dates that are absent from covid_incidents data file
+  
+  state_incidents <- covid_incidents %>% 
+    dplyr::filter(Province_State %in% Province_Input) %>% 
+    select(Date, Incident_Rate) %>%
+    arrange(Date) %>% 
+    rename(date_col = Date,
+           incident_rate = Incident_Rate)
+  
+  state_incidents_full <- merge(date_appendage,
+                                state_incidents,
+                                all = TRUE) # merge the placeholder date rows with incidents df
+
+  state_covid_full <- merge(covid_state,
+                            state_incidents_full,
+                            all = TRUE) %>% # merge incidents df with main df
+    drop_na() # remove NAs before plotting later
+  
+return(state_covid_full) }
+  
+MA_covid <- table_function("Massachusetts")
+
+```
+
+
+### **2c: Let's get visual**
+
+*Great! Make a compelling plot of the timeseries for Massachusetts! Points for style, class, ease of understanding major trends, etc. Note, 10/10 for yourself only for the most killer figures. Don’t phone it in! Also, note what the data from JHU is. Do you want the cummulatives, or daily, or what? Want to highlight features? Events? Go wild!*
+
+```{r message = FALSE}
+
+library(ggplot2) # plot
+library(gganimate) # animate
+library(ggpubr) # other features
+library(magick) # combined animated plots
+library(gifski) # render
+library(png) # png files for output
+
+MA_plot_colors <- c("New Cases" = "salmon",
+                    "Incident Rate" = "blue")
+MA_plot <- ggplot(data = MA_covid) +
+  geom_line(aes(x = date_col,
+                y = new_cases),
+            alpha = 1,
+            linetype = 1) +
+  geom_line(aes(x = date_col,
+                y = incident_rate),
+            alpha = 1,
+            linetype = 5) +
+  labs(title = "Covid Cases in Massachusetts",
+       subtitle = "From Jan 2020 to Present",
+       x = "Date",
+       y = "Number of Cases") +
+  custom_theme() +
+  transition_reveal(along = date_col)
+
+MA_gif <- animate(MA_plot, 
+                  fps = 100, 
+                  duration = 1,
+                  width = 500, 
+                  height = 500,
+                  renderer = gifski_renderer("/Users/nathanstrozewski/Downloads/Biological Data Analysis/Midterm/Animations/new.gif")) # creates output
+
+MA_mgif <- image_read(MA_gif) # reads it
+MA_mgif
+
+# Attempted code to combined 3 separate animated plots
+
+# MA_cumulative_cases_plot <- ggplot(data = MA_covid) +
+#   geom_line(aes(x = date_col,
+#                 y = cumulative_cases),
+#             alpha = 1,
+#             linetype = 1,
+#             color = "blue") +
+#   labs(title = "Cumulative Cases",
+#        x = "Date",
+#        y = "Number of Cases") +
+#   transition_reveal(along = date_col) +
+#   custom_theme()
+# 
+# MA_incident_rate_plot <- ggplot(data = MA_covid) +
+#   geom_line(aes(x = date_col,
+#                 y = incident_rate),
+#             alpha = 1,
+#             linetype = 5,
+#             color = "magenta") +
+#   labs(title = "Number of Cases per 100,000 People",
+#        x = "Date",
+#        y = "Rate (per 100,000)") +
+#   transition_reveal(along = date_col) +
+#   custom_theme()
+#
+# cumulative_gif <- animate(MA_cumulative_cases_plot, 
+#                  fps = 100, 
+#                  duration = 1,
+#                  width = 500, 
+#                  height = 500,
+#                  renderer = gifski_renderer("/Users/nathanstrozewski/Downloads/Biological Data Analysis/Midterm/Markdown/cumulative.gif"))
+# 
+# incidents_gif <- animate(MA_incident_rate_plot, 
+#                  fps = 100, 
+#                  duration = 1,
+#                  width = 500, 
+#                  height = 500,
+#                  renderer = gifski_renderer("/Users/nathanstrozewski/Downloads/Biological Data Analysis/Midterm/Markdown/incidents.gif"))
+# cumulative_mgif <- image_read(cumulative_gif)
+# cumulative_mgif
+# incidents_mgif <- image_read(incidents_gif)
+# 
+# combined_gif <- image_append(c(new_mgif[1],
+#                                cumulative_mgif[1],
+#                                incidents_mgif[1]),
+#                                stack = TRUE)
+# 
+# for(i in 2:100){
+#   final <- image_append(c(new_mgif[1],
+#                           cumulative_mgif[1],
+#                           incidents_mgif[1]),
+#                         stack = TRUE)
+#   combined_gif <- c(combined_gif, final)
+# }
+
+```
+
+I opted to design an animated plot (Figure 1) demonstrating both the new cases and the incident rate across time. This dynamically demonstrates outbreaks and lulls in covid transmission across the state, while also showing how the total number of cases per 100,000 increases over time. I encountered issues getting a legend on my animated gif, and gave up because I wanted to prioritize the other tasks. I'm sure it's an easy-ish fix. For now, you'll have to trust me that the dashed line is the Incident Rate and the solid line is New Cases.
+
+Lastly, I coded 3 gif plots that animated similarly to how I animated my final plot. One plot was for new cases, one for cumulative, one for incident rate. When I tried to combine them (see commented code), they combined into one figure (side-by-side) but didn't animate. Again, I moved on because the plot I decided to use was pretty nifty. I would like to circle back and figure this out in the future though. This could be really cool to have in my tool belt.
+
+### **2d: At our fingertips**
+
+*Cool. Now, write a function that will take what you did above, and create a plot for any state - so, I enter Alaska and I get the plot for Alaska! If you really want to impress yourself (not required) highlight points of interest - but dynamically using the data.*
+
+#### **Step 1: Write the function**
+
+```{r 2d_function}
+
+library(gghighlight) # highlighting points in ggplots
+
+gif_function <- function(Province_Input) {
+
+  state_table <- table_function(Province_Input)
+  
+  province_mean_new_cases <- mean(state_table$new_cases)
+  province_mean_incidents <- mean(state_table$incident_rate)
+  
+state_plot <- ggplot(data = state_table) +
+  geom_line(aes(x = date_col,
+                y = new_cases),
+            alpha = 1,
+            linetype = 1,
+            color = "salmon") +
+  geom_line(aes(x = date_col,
+                y = incident_rate),
+            alpha = 1,
+            linetype = 5,
+            color = "black") +
+  labs(title = "Covid Cases in {Province_Input}",
+       subtitle = "From Jan 2020 to Present",
+       x = "Date",
+       y = "Number of Cases") +
+  custom_theme() +
+  transition_reveal(along = date_col) +
+  gghighlight(new_cases >= province_mean_new_cases & incident_rate >= province_mean_incidents)
+
+state_gif <- animate(state_plot, 
+                     fps = 100, 
+                     duration = 1,
+                     width = 500, 
+                     height = 500,
+                     renderer = gifski_renderer("/Users/nathanstrozewski/Downloads/Biological Data Analysis/Midterm/Animations/new.gif")) # creates output
+
+state_mgif <- image_read(state_gif) # reads it
+
+return(state_mgif) }
+
+```
+
+
+#### **Step 2: Show that it works using the best state in the US**
+
+```{r message = FALSE}
+
+gif_function("New Hampshire") %>% 
+  print()
+
+```
+
+
+Here I tried to highlight outbreaks by using gghighlight() to change the color of any point above the mean new_cases or incident_rate. Highlighting this for the incident_rate doesn't tell us much other than that the data is past the halfway point. I am having a hard time interpreting the highlight for new_cases - it appears that a new line is formed above the existing line. This was not intended. Additionally, adding the highlight removed my existing line colors - which would be completely fine if I could figure out how to create a legend because I could include the line type as the key to the legend. While this isn't quite the final product I was hoping for, I'm glad I took a stab at this because I learned that gghighlight exists and will play around with it more in the future.
+
+I also am working on adding figure descriptions to animated ggplots - I can do this quite well for non-animated ggplots (see later code in Question 3, 4, and 5). 
+
+This is Figure 2 FYI (and the last one was Figure 1) - so don't be alarmed when my next figure is called Figure 3 without previous figures being labeled as such in the added descriptions.
+
+
+## **Question 3: Fit and Evaluate a Linear Model**
+
+*Let’s fit and evaluate a linear model! To motivate this, we’ll look at Burness et al.’s 2012 study “Post-hatch heat warms adult beaks: irreversible physiological plasticity in Japanese quail http://rspb.royalsocietypublishing.org/content/280/1767/20131436.short the data for which they have made available at Data Dryad at http://datadryad.org/resource/doi:10.5061/dryad.gs661. We’ll be doing a slightly modified version of their analysis.*
+
+
+### **3a: What should I do?**
+
+*Starting with loading this (new to you) data set for the very first time, what are the steps that you would take to analyze this data? Write them out! Maybe even in comments!*
+
+First, I will read the README files associated with this data to understand what is being measured, what the variables are, and any notes the developers feel are important for me to know. Next, I'll load the data and review its format, the classes of the variables, etc. to know if I need to make and manipulations for more efficient processing. 
+
+I'll next plot variables of interest to get a general idea of the relationship between them. Following this, I'll create a linear model using the variables of interest and evaluate the assumptions of the model. I'll make any necessary modifications to the model and reevaluate assumptions. Once I am comfortable with the mode, I'll evaluate the model by determining the effects of my independent variable(s) on my dependent variable, the correlation between them, etc. I'll then plot the model to demonstrate these findings visually.
+
+
+### **3b: Let's get started**
+
+*Load the data. Look at it. Anything interesting? Anything you’d want to watch out for? Or is it OK? Anything you’d change to make working with the data easier? Also, manipulate it a bit - for our analysis, we’re going to want Bird # and the Age of the birds to be categorical variables. Make sure we have variables that will work!*
+
+
+#### Step 1: Review the README_for_Morphology data.txt file
+
+Birds #16 and #18 had deformities to the bill. Is it possible that these deformities impacted some variables of interest? I should consider removing these from the dataset to avoid confounds.
+
+
+#### Step 2: Load the data
+
+```{r 3a_load}
+
+quail <- read.csv("/Users/nathanstrozewski/Downloads/Biological Data Analysis/Midterm/Data/doi_10.5061_dryad.gs661__v1/Morphology data.csv")
+
+```
+
+
+#### Step 3: Review the data
+
+```{r 3a_str}
+
+str(quail) # review of different vars and their clases
+summary(quail) # provides some summary stats of the vars
+
+```
+
+There are many NAs. Additionally, the variable names contain many periods and may be difficult to work with - I should rename those. I'll also change Bird# and Age variables to categorical for future analyses.
+
+
+#### Step 4: Modify the dataset
+
+```{r question_3_part_a_step_4}
+
+library(tidyr) # tidy capabilities
+library(dplyr) # data manipulation
+
+quail <- quail %>% 
+  rename(bird_num = Bird.., age_days = Age..days., temp_celsius = Exp..Temp...degree.C.,
+         mass_g = Mass..g., tarsus_mm = Tarsus..mm., culmen_mm = Culmen..mm.,
+         depth_mm = Depth..mm., width_mm = Width..mm.) %>% # rename variables
+  mutate(age_days = as.factor(age_days),
+         bird_num = as.factor(bird_num)) %>% # change vars to factors
+  subset(bird_num != 16) %>% # remove bird with reported deformities
+  subset(bird_num != 18) %>% # remove bird with reported deformities
+  drop_na() # remove NAs
+
+```
+
+
+### **3c: Conduct a basic vizualization of the data**
+
+*The model we will fit is one where we want to look at how temperature treatment affects the development of tarsus length over time (age). Visualize this. Make it look good! Is there anything here that would shape how you fit a model? Do you see why we are treating age as categorical?*
+
+
+#### **Step 1: Plot tarsus length over time by temperature**
+
+```{r 3b_ggpairs}
+
+library(ggplot2) # plotting
+
+quail_plot <- ggplot(data = quail,
+                     mapping = aes(x = age_days,
+                                   y = tarsus_mm,
+                                   color = temp_celsius)) +
+  geom_point() +
+  facet_wrap(vars(temp_celsius)) + # split the data into plots for each temp
+  labs(title = "Influence of Temperature",
+       subtitle = "on Tarsus Length Over Time",
+       x = "Age (days)",
+       y = "Tarsus Length (mm)",
+       color = "Temperature (C)") +
+  custom_theme() +
+  theme(axis.text.x= element_text(size = 6))
+
+quail_plot_text <- paste("Figure 3: The influence of temperature on tarsus length was plotted",
+                         "across time. Data was obtained from Burness et al. (2013)",
+                         "https://doi.org/10.5061/dryad.gs661",
+                         sep = " ") # write the figure description
+
+quail_plot_text_p <- ggparagraph (text = quail_plot_text,
+                                  size = 10,
+                                  color = "black") # format description
+
+quail_plot_with_text <- ggarrange(quail_plot,
+                                  quail_plot_text_p,
+                                  ncol = 1,
+                                  nrow = 2,
+                                  heights = c(2.5, 1)) # combined figure and description
+
+quail_plot_with_text
+
+```
+
+Tarsus length increases aver time then eventually levels off. This suggests that I could log-transform in a model. Age is measured in specific days and isn't necessarily a clean, continuous variable - especially with all the variability in when measurements increments (e.g., the jump from sampling at 80 to 123 days). Making age categorical removes issues I'd run into work with this.
+
+
+### **3d: Fit and evaluate**
+
+*Fit a model where tarsus length is predicted by age, treatment, their interaction, and a ‘block’ effect, as it were, of bird #. Evaluate the fit. Make any modifications as you see necessary due to your model checks. Note, it’s not going to be perfect (I checked the original - hey, you can too - and they’re on the edge) - but our models are robust, so we’re OK.*
+
+
+#### **Step 1: Fit the model and check**
+
+```{r 3d_model}
+
+quail_lm <- lm(log(tarsus_mm) ~ age_days*temp_celsius + bird_num,
+               data = quail)
+
+library(performance) # model assessment capabilities
+
+check_model(quail_lm)
+
+```
+
+The model-predicted data matches the observed data very well. Jarrett has mentioned that this is often enough to conclude that the model is good-to-go. But I'm a good scientist so I'll look through the other assumption checks before proceeding.
+
+Quickly scanning the assumption checks - there are no apparent concerns with linearity, homogeneity of variance, or influential observations. The normality of residuals looks pretty good...the points on either end of the distribution quantiles stray a bit from the line - but not enough to be concerned. However, the collinearity is very high for all IVs. I would like to use the cor() function to look at the correlations closer, but two of my three IVs are not numeric (age and bird number). I also can't do much centering - age is discrete and birds were only tested at one of two temperature so centering wouldn't help much. Therefore, it seems my best option is to move forward with the model I currently have.
+
+
+### **3e: Answer the Question**
+
+*A central question of this paper is - does temperature affect the development of tarsus length. With your fit model in hand, answer the question, however you deem fit. Make sure that, alongside any numerical answers you produce, there is at least one stunning figure for a publishable paper!*
+
+```{r message = FALSE}
+
+library(broom) # some good summary functions
+library(emmeans) # cool & easy statistics
+
+r2(quail_lm)
+
+emmeans(quail_lm,
+        specs = ~temp_celsius) %>% 
+  contrast(method = "pairwise") %>% 
+  confint()
+
+```
+
+
+The R2 value for my model is 0.949, suggesting that the independent variables included (temperature, age, and bird number) are likely responsible for a large portion of the fate of the dependent variable (tarsus length). Pairwise comparison of the effect of temperature on tarsus length indicates that a temperature of 30 degrees Celsius yields a slightly higher mean tarsus length than a temperature of 15 degrees Celsius. Thus, I can conclude from this analysis that temperature is positively correlated to tarsus length. This is somewhat expected, as temperature is known to increase developmental rates in organisms ranging from yeast to *Drosophila*.
+
+```{r 3e_visreg}
+
+library(visreg) # for visualizing model
+library(ggplot2) # for plotting features
+library(ggpubr) # for combining plotting objects
+
+quail_lm_visreg <- visreg(quail_lm,
+       "temp_celsius",
+       gg = TRUE) +
+  custom_theme() +
+  labs(title = "Influence of Temperature on Tarsus Length",
+       x = "Temperature (C)",
+       y = "log(Tarsus Length)") # plot with labels
+
+quail_lm_visreg_text <- paste("Figure 4: The influence of temperature, age, and bird number",
+                              "on tarsus length was modeled and log transformed. Tarsus length",
+                              "was then plotted by temperature.",
+                              sep = " ") # write the figure description
+
+quail_lm_visreg_text_p <- ggparagraph(text = quail_lm_visreg_text,
+                                      size = 10,
+                                      color = "black") # format description
+
+quail_lm_visreg_with_text <- ggarrange(quail_lm_visreg,
+                                       quail_lm_visreg_text_p,
+                                       ncol = 1,
+                                       nrow = 2,
+                                       heights = c(2.5, 1)) # combined figure and description
+
+quail_lm_visreg_with_text
+
+```
+
+
+Plotting the log of tarsus length by temperature indicates that temperature increases slgihtly at 30 degrees C compared to 15 degrees C. This aligns with the aforementioned conclusions from the emmeans() analysis.
+
+```{r part_3_step_8_visreg2d}
+
+library(visreg) # for visualizing model
+library(ggplot2) # for plotting features
+library(ggpubr) # for combining plotting objects
+
+quail_lm_visreg2d <- visreg2d(quail_lm,
+                              x = "age_days",
+                              y = "temp_celsius", # create 2d visreg
+                              plot.type = "gg" , # make it work with gg
+                              nn = 50) + # make the gradient smoother
+  custom_theme() +
+  labs(title = "Influence of Temperature",
+       subtitle = " on Tarsus Length Over Time",
+       x = "Age (days)",
+       y = "Temperature (C)")
+
+quail_lm_visreg2d_text <- paste("Figure 5: Tarsus length at various temperatures",
+                                "and ages was plotted. Red denotes high tarsus",
+                                "length while blue denotes low tarsus length",
+                                sep = " ") # write the figure description
+
+quail_lm_visreg2d_text_p <- ggparagraph(text = quail_lm_visreg2d_text,
+                                        size = 10,
+                                        color = "black") # format description
+
+quail_lm_visreg2d_with_text <- ggarrange(quail_lm_visreg2d,
+                                         quail_lm_visreg2d_text_p,
+                                         ncol = 1,
+                                         nrow = 2,
+                                         heights = c(2.5, 1)) # combined figure and description
+
+quail_lm_visreg2d_with_text
+
+```
+
+
+Plotting tarsus length across both temperature and age supports the conclusion from Figure 4 that tarsus length increases at higher temperatures. This is clear between ages 19-23, where longer tarsus lengths (darker red) are observed at 30^o Celsius  and shorter tarsus lengths (lighter red) are observed at 15^o Celsius. This figure also indicates that tarsus length increases with age at both temperatures, as shorter tarsus lengths (blue) are seen between ages ~5-15 while longer tarsus lengths are seen at ages greater than 17.
+
+
+## **Question 4:**
+
+*Sometimes we bootstrap when things don’t quite meet parametric assumptions. In the above data, let’s look at a relationship and then bootstrap it’s coefficients.*
+
+
+### **4a: The relationship**
+
+*Look at the relationship between culmen and tarsus length using a linear model. What’s off here? Don’t worry about any other predictors for culmen length other than tarsus length.*
+
+```{r question_4_step_a}
+
+quail <- read.csv("/Users/nathanstrozewski/Downloads/Biological Data Analysis/Midterm/Data/doi_10.5061_dryad.gs661__v1/Morphology data.csv")
+str(quail)
+summary(quail)
+
+quail <- quail %>% 
+  rename(bird_num = Bird.., age_days = Age..days., temp_celsius = Exp..Temp...degree.C.,
+         mass_g = Mass..g., tarsus_mm = Tarsus..mm., culmen_mm = Culmen..mm.,
+         depth_mm = Depth..mm., width_mm = Width..mm.) %>% 
+  mutate(age_days = as.factor(age_days),
+         bird_num = as.factor(bird_num)) %>% 
+  subset(bird_num != 16) %>% # remove bird with reported deformities
+  subset(bird_num != 18) %>% # remove bird with reported deformities
+  drop_na()
+
+quail_culmen_lm <- lm(culmen_mm ~ tarsus_mm,
+               data = quail)
+
+library(performance) # model assessment capabilities
+
+check_model(quail_culmen_lm)
+
+```
+
+The reference lines for the linearity and HoV plots are a bit wavy - whereas they should be flat. They don't look THAT bad (I know, a bit subjective), and because the PPC is really good I think this model looks good overall.
+
+### **4b: A function! A function!**
+
+*Write a function that, given a formula and a data set, will return the coefficients of a linear model fit to that data set as a tibble. Just the coefficients. Nothing else. Show that it works with the whole dataset to recover the coefficients from above.*
+
+```{r question_4_step_b}
+
+coefficient_function <- function(formula, dataset) {
+  
+  function_lm <- lm(formula,
+                    data = dataset)
+  
+  coef_tibble <- as_tibble(coef(function_lm))
+  
+  return(coef_tibble)
+}
+
+coefficient_function_test <- coefficient_function(formula = culmen_mm ~ tarsus_mm, 
+                                                  dataset = quail)
+
+quail_dataset_coef <- as_tibble(coef(quail_culmen_lm))
+coefficient_function_test_coef <- coefficient_function(culmen_mm ~ tarsus_mm, quail)
+
+quail_dataset_coef
+coefficient_function_test_coef
+
+```
+
+### **4c: Sampling your data**
+
+*Write a function that takes a dataset as input, then outputs a bootstrap sample of that data - it should have the same number of rows, and be sampled with replacement. Show that, if you make one bootstrapped replicate of your dataset and you fit a model using your function from above, your coefficients are a wee bit different. If you want to IMPRESS YOURSELF sample so that you get back the same number of rows of data by temperature and age (this is called stratified bootstrapping). Note - look at sample() or dplyr::sample_frac().*
+
+```{r question_4_step_c}
+
+library(bootstrap)
+
+bootstrap_function <- function(dataset) {
+  
+  bootstrap_sample <- sample_frac(dataset,
+                                size = 1,
+                                replace = TRUE)
+
+return(bootstrap_sample)
+} # create function
+
+bootstrap_df <- bootstrap_function(quail) # check that it works
+
+bootstrap_test_lm <- lm(culmen_mm ~ tarsus_mm,
+                        data = bootstrap_df) # create a matching model from it
+
+coef(quail_culmen_lm) # generate coefs
+coef(bootstrap_test_lm) # compare coefs to original model
+
+```
+
+
+Here's a stab at stratifying by temperature and age:
+
+```{r stratify}
+
+# library(splitstackshape) # has a cool stratify function
+# 
+# stratify_function <- function(dataset, stratifier_a, stratifier_b) {
+#   
+#   stratified_sample <- stratified(indt = dataset,
+#                                   group = c($stratifier_a, $stratifier_b),
+#                                   size = c(lendth($stratifier_a), length($stratifier_b)))
+# return(stratified_sample)
+# }
+# 
+# stratify_function(quail, age_days)
+
+```
+
+
+IDK I'm tired. Ignore this one.
+
+### **4d: Boot those coefficients**
+
+*Write a function that, given a formula and a data set, will return one bootstrapped set of coefficients using the functions from above. Again, show it works.*
+
+```{r question_5_part_d}
+
+bootstrap_function_combo <- function(formula, dataset) {
+  
+  bootstrapped_data <- bootstrap_function(dataset)
+  
+  combo_output <- coefficient_function(formula, bootstrapped_data)
+  
+  return(combo_output)
+}
+
+bootstrap_function_combo(culmen_mm ~ tarsus_mm, quail)
+coef(quail_culmen_lm)
+```
+
+### **4e: Boot it up!**
+
+*OK! Now, using these functions and some of the iteration tools you know, get 1,000 bootstrapped replicate coefficients, and then report out the bootstrapped coefficient values and their SE. How does it compare to the results from your original lm?*
+
+```{r 4e}
+
+bootstrap_rep_test <- replicate(n = 1000,
+                                rowMeans(bootstrap_function_combo(culmen_mm ~ tarsus_mm, quail)))
+
+se_bootstrap_rep <- sd(bootstrap_rep_test)
+
+bootstrap_rep_test
+se_bootstrap_rep
+
+```
+
+The standard error result here is 0.2740808, indicating that the modeled data is pretty close to the original data (closer to 0 = good). The coefficients in my original linear model were -0.1042465 for culmen_mm and 0.3725280 for tarsus_mm.
+
+
+## **Question 5: Something Generalized**
+
+*In their 2011 paper, Stanton-Geddes and Anderson assessed the role of a facultative mutualism between a legume and soil rhizobia in limiting the plant’s range. After publishing, they deposited their data at Dryad http://datadryad.org/resource/doi:10.5061/dryad.8566. As part of their lab experiment, they looked at a variety of plant properties after growing plants with rhizobia from different regions. We want to look at what happened in that experiment during the March 12th sampling event.*
+
+
+### **5a: Fit a glm**
+
+*Load the data. Vizualize. Then, fit and evaluate a generalized linear model with your choice of error distribution looking at the effect of rhizobial region and plant height as measured on march 12 as predictors of # of leaves on march 12. Does your model meet assumptions? If not, refit with a different. Why did you chose this (or these) error distribution(s)?*
+
+
+#### **Step 1: Load the data**
+
+```{r 5a_load}
+
+library(readr)
+
+setwd("/Users/nathanstrozewski/Downloads/Biological Data Analysis/Midterm/Data/doi_10.5061_dryad.8566__v1/")
+
+rhizo_field <- read_csv("field_inoculation_expt_2009.csv")
+
+rhizo_green <- read_csv("greenhouse_inoculation_expt_2010.csv")
+```
+
+#### **Step 2: LOOK AT IT.**
+
+```{r 5a_review}
+
+str(rhizo_field)
+summary(rhizo_field)
+
+str(rhizo_green)
+summary(rhizo_green)
+
+```
+
+
+#### **Step 3: Modify the dataset**
+
+```{r 5a_modify}
+
+rhizo_green$rhiz_region[rhizo_green$rhiz_region == "c"] <- "Control"
+rhizo_green$rhiz_region[rhizo_green$rhiz_region == "edge"] <- "Edge"
+rhizo_green$rhiz_region[rhizo_green$rhiz_region == "interior"] <- "Interior"
+rhizo_green$rhiz_region[rhizo_green$rhiz_region == "beyond"] <- "Beyond"
+
+```
+
+
+#### **Step 4: Visualize the variables of interest**
+
+```{r message = FALSE}
+
+library(ggplot2) # plotting
+library(ggpubr) # gg details
+
+rhizo_green_region_plot <- ggplot(data = rhizo_green,
+                             mapping = aes(x = rhiz_region,
+                                           y = leaf_mar12,
+                                           fill = rhiz_region)) +
+  geom_violin() +
+  geom_point() +
+  geom_jitter() +
+  labs(title = "Influence of Region on Rhizobial Leaf Number",
+       subtitle = "On March 12",
+       x = "Region (Relative to current distribution)",
+       y = "Number of Leaves",
+       fill = "Region") + # plot leaf num by region
+  custom_theme() # make it presentable
+
+rhizo_green_region_text <- paste("Figure 6: Number of leaves as measured on March 12",
+                                 "was plotted by region. The width of the violin",
+                                 "indicates the density of measurements at that value.",
+                                 "Data was obtained from Stanton-Geddes& Anderson (2011).")
+
+rhizo_green_region_para <- ggparagraph(text = rhizo_green_region_text,
+                                      size = 10,
+                                      color = "black") # format description
+
+rhizo_green_region_final <- ggarrange(rhizo_green_region_plot,
+                                      rhizo_green_region_para,
+                                      ncol = 1,
+                                      nrow = 2,
+                                      heights = c(2.5, 1)) # combined figure and description
+
+rhizo_green_height_plot <- ggplot(data = rhizo_green,
+                                  mapping = aes(x = height_mar12,
+                                                y = leaf_mar12,
+                                                fill = rhiz_region)) +
+  geom_violin(alpha = 0.5) +
+  labs(title = "Influence of Height on Rhizobial Leaf Number",
+       subtitle = "On March 12",
+       x = "Height (cm)",
+       y = "Number of Leaves",
+       fill = "Region") +
+  custom_theme()
+
+rhizo_height_region_text <- paste("Figure 7: Number of leaves as measured on March 12",
+                                  "was plotted by sample height. The width of the violin",
+                                  "indicates the density of measurements at that value.",
+                                  "Data was obtained from Stanton-Geddes& Anderson (2011).")
+
+rhizo_height_region_para <- ggparagraph(text = rhizo_height_region_text,
+                                        size = 10,
+                                        color = "black") # format description
+
+rhizo_height_region_final <- ggarrange(rhizo_green_height_plot,
+                                       rhizo_height_region_para,
+                                       ncol = 1,
+                                       nrow = 2,
+                                       heights = c(2.5, 1)) # combined figure and description
+
+rhizo_plot <- ggplot(data = rhizo_green,
+                     mapping = aes(x = height_mar12,
+                                   y = leaf_mar12,
+                                   color = rhiz_region)) +
+  geom_point(alpha = 0.5) +
+  facet_wrap(vars(rhiz_region)) +
+  stat_smooth() +
+  labs(title = "Influence of Height on Rhizobial Leaf Number",
+       subtitle = "On March 12",
+       x = "Height (cm)",
+       y = "Number of Leaves",
+       fill = "Region") +
+  custom_theme()
+  
+rhizo_text <- paste("Figure 8: Number of leaves as measured on March 12",
+                    "was plotted by sample height and displayed by",
+                    "region. Data was obtained from Stanton-Geddes", 
+                    "& Anderson (2011).")
+                                  
+rhizo_para <- ggparagraph(text = rhizo_height_region_text,
+                                 size = 10,
+                                 color = "black") # format description
+
+rhizo_final <- ggarrange(rhizo_plot,
+                         rhizo_para,
+                         ncol = 1,
+                         nrow = 2,
+                         heights = c(2.5, 1)) # combined figure and description
+  
+rhizo_green_region_final
+rhizo_height_region_final
+rhizo_final
+  
+```
+
+
+#### **Step 4: Fit a glm**
+
+```{r 5a_glm}
+
+rhizo_glm <- glm(leaf_mar12 ~ rhiz_region + height_mar12,
+                 family = poisson(link = "log"),
+                 data = rhizo_green)
+
+```
+
+
+#### **Step 5: Check assumptions**
+
+```{r 5a_assumptions}
+
+library(performance) # checking assumptions
+
+check_model(rhizo_glm)
+
+```
+
+
+I used a Poisson distribution to write this generalized linear model (glm). In my glm, the dependent variable is the number of leaves counted on a sample (var_name = leaf_mar12). I initially interpreted this to be a continuous variable because the number of leaves can theoretically be any bounded value from 0 to infinity.
+
+This is the code block I wrote when I did that:
+    
+    > rhizo_glm <- glm(leaf_mar12 ~ rhiz_region + height_mar12,
+                 family = Gamma(link = "log"),
+                 data = rhizo_green) <
+    
+When I checked the assumptions of this model, everything looked excellent: the predicted data was almost exactly the same as the actual data, collinearity was low, etc.
+
+However, I reevaluated my methods because I am a good scientist. I realized that my interpretation of the dependent variable was incorrect. The outcome, number of leaves, is actually a discrete variable and not continuous. For one, number of leaves counted can only be a whole number. Thus, the dependent variable values will always fit into discrete "bins", such as 1 leaf, 2 leaves, etc. I rewrote my glm to reflect this.
+
+When I checked the assumptions of this model (see {r 5a_glm} for model code), the posterior predictive check did not match the actual data *as* closely as the previous model. However, the match was still very close and the general trends aligned very closely. Despite not being as perfect a fit as the previous model, I am comfortable with the outcome here. There are no other apparent issues in the assumption checks, but it can't hurt to look at the residuals to be sure.
+
+
+#### **Step 6: Look at residuals**
+
+```{r 5a_residuals}
+
+library(DHARMa) # checking residuals
+
+rhizo_residuals <- simulateResiduals(rhizo_glm)
+
+plotQQunif(rhizo_residuals)
+plotResiduals(rhizo_residuals)
+testOverdispersion(rhizo_residuals)
+
+```
+
+
+Digging into the residuals further does indicate that there is an issue with overdispersion. I tested using a quasi-poisson family (instead of poisson) in my glm, and this revealed no substantial changes to the check_model() output. Unfortunately, I can't run the quasi-poisson version of my model through the DHARMa package and struggled to find a resolution. Because the PPC is so good in my model, I think it is ok to move on. I'll have to put in a disclaimer about this overdispersion when I publish figures from this model in *Nature* soon.
+
+
+**### 5b: Evaluate your treatments**
+
+*Which rhizobial regions enable more leaves relative to the control? And in what direction?*
+
+
+#### **Step 1: Evaluate the model. Which rhizobial regions enable more leaves relative to the control? And in what direction?**
+
+```{r 5a_evaluate}
+
+library(emmeans) # to do cool stats stuffs
+library(ggplot2) # plotting
+
+rhizo_em <- emmeans(rhizo_glm, specs =  ~ rhiz_region)
+
+rhizo_em_dunnet <- contrast(rhizo_em,
+                            method = "dunnett",
+                            ref = "Control") %>% 
+  confint()
+
+rhizo_em_dunnet_plot <- plot(rhizo_em_dunnet,
+                             # main = "Influence of Rhizobial Region on Leaf Number", # doesn't work
+                             # sub = "On March 12", # doesn't work
+                             xlab = "Estimate",
+                             ylab = "Dunnett Test Comparison") +
+  geom_vline(xintercept = 0,
+             color = "magenta", 
+             lty = 16) +
+  custom_theme()
+
+rhizo_em_dunnet
+rhizo_em_dunnet_plot
+
+```
+
+Figure 9 (above; I couldn't fit a figure description to this one) demonstrates that all regions lead to an increase in leaf number as compared to control, with the beyond region demonstrating the largest increase. The influence of interior and edge region is very similar.
+
+
+### **5c: Prediction intervals from a distribution**
+
+**So, your distribution has quantiles (right? We see these in QQ plots). You can see what the value for those quantiles are from the q* function for a distribution. For example, the 95th percentile of a poisson with a lambda of 5 spans from 1 to 10. You can see this with qpois(0.025, lambda = 5) for the lower, and change it to 0.975 for the upper. Check this out. Plot the upper and lower bounds of the 95th percentile of a Poisson distribution over a range of lambdas from 1 to 30. Do the same for a negative binomial with means from 1 to 30. Note, to translate from a mean (  ) with a size of 10 (you might have to look at the helpfile for qnbinom here).**
+
+#### **Step 1: Plotting 95th percentile bounds, Poisson distribution, lambda = 1:30**
+
+```{r question_5_part_c_step_1}
+
+library(dplyr) # data manipulation
+
+poisson_tibble <- tibble(x = rep(seq(0.025, 0.975, by = 0.05), 30),
+                         lambda = rep(1:30,
+                                      each = length(x)/30),
+                         dens = qpois(x, lambda = lambda))
+
+poisson_tibble <- poisson_tibble %>% 
+  filter(x == 0.025 | x == 0.975) %>%
+  arrange(lambda)
+
+poisson_plot <- ggplot(data = poisson_tibble,
+                       mapping = aes(x = lambda,
+                                     y = dens)) +
+                         geom_line(mapping = aes(group = lambda)) +
+                         geom_point(mapping = aes(color = as.factor(x))) +
+  labs(title = "Bounds Between the 95th Percentile",
+       subtitle = "of a Poisson Distribution Over Lambda of 1:30",
+       x = "Lambda",
+       y = "Density",
+       color = "Bounds") + 
+  custom_theme() +
+  scale_color_manual(breaks = c("0.025", "0.975"),
+                        values=c("blue", "salmon"))
+
+  qpois_text <- paste("Figure 10: The bounds between the 95th percentile of a",
+                      "Poisson distribution were calculated and plotted over.",
+                      "a lambda of 1:30. Data was obtained from Stanton-Geddes",
+                      "& Anderson (2011).")
+                         
+  qpois_para <- ggparagraph(text = qpois_text,
+                               size = 10,
+                               color = "black") # format description
+
+poisson_plot_final <- ggarrange(poisson_plot,
+                                qpois_para,
+                                ncol = 1,
+                                nrow = 2,
+                                heights = c(2.5, 1)) # combined figure and description
+            
+poisson_plot_final
+
+```
+
+#### Step 2: Plotting 95th percentile bounds, negative binomial, range of means = 1:30
+
+```{r 5c_nbinom}
+
+qbinom_tibble <- tibble(x = rep(seq(0.025, 0.975, by = 0.05), 30),
+                        mu = rep(1:30,
+                                 each = length(x)/30),
+                        size = 10,
+                        prob = size/(size + mu),
+                        dens = qbinom(x, size = 10, prob = prob))
+
+qbinom_tibble <- qbinom_tibble %>% 
+  filter(x == 0.025 | x == 0.975) %>%
+  arrange(mu)
+
+qbinom_plot <- ggplot(data = qbinom_tibble,
+                       mapping = aes(x = mu,
+                                     y = dens)) +
+                         geom_line(mapping = aes(group = mu)) +
+                         geom_point(mapping = aes(color = as.factor(x))) +
+  labs(title = "Bounds Between the 95th Percentile",
+       subtitle = "of a Negative Binomial Distribution Over a Mu of 1:30",
+       x = "Mu",
+       y = "Density",
+       color = "Bounds") + 
+  custom_theme() +
+  scale_color_manual(breaks = c("0.025", "0.975"),
+                        values=c("blue", "salmon"))
+
+qbinom_text <- paste("Figure 11: The bounds between the 95th percentile of a",
+                      "negative binomial distribution were calculated and",
+                      "plotted over a mu of 1:30. Data was obtained from",
+                      "Stanton-Geddes & Anderson (2011).")
+                         
+qbinom_para <- ggparagraph(text = qbinom_text,
+                           size = 10,
+                           color = "black") # format description
+
+qbinom_final <- ggarrange(qbinom_plot,
+                                qbinom_para,
+                                ncol = 1,
+                                nrow = 2,
+                                heights = c(2.5, 1)) # combined figure and description
+            
+qbinom_final
+
+```
+
+
+## **5d: Prediction intervals from your model**
+
+*All right! Armed with this knowledge, one of the frustrating things about broom::augment() for glm models is that it doesn’t have an interval argument. And has one trick. One - you need to see what scale your answer is returned on. We want to look at the response scale - the scale of the data. Second, while you can use se_fit to get standard errors, you don’t get a CI per se (although, hey, ~2(se) = CI).*
+
+*AND - we just looked at how when you have an estimated value, you can get the prediction CI yourself by hand in the previous part of the question. So, using your creativity, visualize the fit, 95% fit interval, and 95% prediction interval at the min, mean, and max of height for each treatment. Geoms can be anything you like! Have fun here!*
+
+```{r message = FALSE}
+
+library(dplyr) # data manipulation
+library(tidyr) # pivot
+library(broom) # augment()
+
+# calc min mean max of each group
+# seq out values of height for each group
+# predict based on seq values
+# use se output from precict() to calculate CI
+# plug fit into qpois with range of min-max to calculate 
+
+
+rhizo_stats <- rhizo_green %>% 
+  group_by(rhiz_region) %>% 
+  summarise(mean = mean(height_mar12),
+            min = min(height_mar12),
+            max = max(height_mar12)) %>% 
+  pivot_longer(cols = -rhiz_region,
+               names_to = "stat",
+               values_to = "height_mar12")
+
+rhizo_prediction <- augment(rhizo_glm,
+                            newdata = rhizo_stats,
+                            type.predict = "response",
+                            se = TRUE) %>%
+  mutate(lower_CI = (.fitted - 2*.se.fit),
+         upper_CI = (.fitted + 2*.se.fit),
+         lower_PI = qpois(0.025, lambda = .fitted),
+         upper_PI = qpois(0.975, lambda = .fitted))
+rhizo_prediction
+
+rhizo_prediction_plot <- ggplot(data = rhizo_prediction,
+                                mapping = aes(x = stat,
+                                              y = .fitted)) +
+  geom_point(color = "black",
+             shape = 11) +
+  geom_linerange(mapping = aes(ymin = lower_PI,
+                               ymax = upper_PI,
+                               color = "Prediction Interval"),
+                 width = 0.5) +
+  geom_linerange(mapping = aes(ymin = lower_CI,
+                               ymax = upper_CI,
+                               color = "Confidence Interval"),
+                width = 1) +
+  facet_wrap(vars(rhiz_region)) +
+  labs(title = "Confidence and Prediction Intervals",
+       subtitle = "For the Leaf Number on March 12",
+       y = "Fitted Value",
+       x = "",
+       color = "Interval") +
+  custom_theme()
+
+rhizo_pred_text <- paste("Figure 12: Confidence and prediction intervals for the",
+                         "maximum, mean, and minimum leaf number from March 12.",
+                         "Data was grouped by region. Data was obtained from",
+                         "Stanton-Geddes & Anderson (2011).")
+                         
+rhizo_pred_para <- ggparagraph(text = rhizo_pred_text,
+                               size = 10,
+                               color = "black") # format description
+
+rhizo_pred_final <- ggarrange(rhizo_prediction_plot,
+                              rhizo_pred_para,
+                              ncol = 1,
+                              nrow = 2,
+                              heights = c(2.5, 1)) # combined figure and description
+
+rhizo_pred_final
+
+```
+
+
+### **5e: IMPRESS YOURSELF! Prediction intervals from your model**
+
+*Again, totally optional, but, check out the sinterval package which you’d have to install from github. It uses fit models and it’s two core functions add_fitted_sims() and add_predicted_sims() to get simulated values from fit models using one or the other interval. Do this, and visualize the same thing as above however you’d like (maybe look at ggdist?). Or try something new? Perhaps visualize across a range of heights, and not just three?*
+
+```{r 5e}
+
+library(sinterval) # new sims functions
+library(ggdist) # plotting
+library(dplyr) # data manipulation
+
+rhizo_sinterval <- rhizo_green %>% 
+  select(rhiz_region, height_mar12, leaf_mar12)
+
+rhizo_stats_sinterval_fitted <- add_fitted_sims(newdata = rhizo_sinterval,
+                                                mod = rhizo_glm,
+                                                n_sims = 10) %>% 
+  arrange(rhiz_region)
+
+rhizo_stats_sinterval_predicted <- add_predicted_sims(newdata = rhizo_sinterval,
+                                                      mod = rhizo_glm,
+                                                      n_sims = 10)  %>% 
+  arrange(rhiz_region)
+
+rhizo_sinterval_with_sims <- cbind(rhizo_stats_sinterval_fitted, 
+                                   rhizo_stats_sinterval_predicted$leaf_mar12_predict,
+                                   rhizo_prediction$lower_CI,
+                                   rhizo_prediction$upper_CI) %>% 
+  rename(leaf_mar12_predict = "rhizo_stats_sinterval_predicted$leaf_mar12_predict",
+         lower_CI = "rhizo_prediction$lower_CI",
+         upper_CI = "rhizo_prediction$upper_CI") %>% 
+  select(rhiz_region, leaf_mar12_fit, leaf_mar12_predict, lower_CI, upper_CI) %>% 
+  mutate(upper_PI = leaf_mar12_fit + leaf_mar12_predict,
+         lower_PI = leaf_mar12_fit - leaf_mar12_predict)
+                                  
+rhizo_sinterval_plot <- ggplot(data = rhizo_sinterval_with_sims,
+                              mapping = aes(x = rhiz_region,
+                                            y = leaf_mar12_fit)) +
+  geom_point(color = "black") +
+  geom_linerange(mapping = aes(ymin = lower_PI,
+                               ymax = upper_PI),
+              color = "darkgrey") +
+  geom_linerange(mapping = aes(ymin = lower_CI,
+                               ymax = upper_CI),
+              color = "magenta") +
+  labs(title = "Prediction and Confidence Intervals For Leaf Number",
+       subtitle = "on March12 Using the sinterval Package",
+       y = "Fitted Value",
+       x = "Region") +
+  custom_theme()
+
+rhizo_sinterval_text <- paste("Figure 13: Prediction and confidence intervals for",
+                              "the leaf number on March 12. Data points were",
+                              "grouped by region.All data were obtained from",
+                              "Stanton-Geddes & Anderson (2011).")
+                         
+rhizo_sinterval_para <- ggparagraph(text = rhizo_sinterval_text,
+                                    size = 10,
+                                    color = "black") # format description
+
+rhizo_sinterval_final <- ggarrange(rhizo_sinterval_plot,
+                                   rhizo_sinterval_para,
+                                   ncol = 1,
+                                   nrow = 2,
+                                   heights = c(2.5, 1)) # combined figure and description
+
+rhizo_sinterval_final
+
+```
+
+
+I was able to use the sinterval package to obtain fitted and predicted values. I am unsure how CIs should be obtained here - I just used the CIs from the previous problem. This probably isn't right but I still wanted to try this problem out and include it.
+
+## **Meta Question**
+
+### **A: How are you doing?**
+
+Tired. This semester has been really busy. I'm taking three courses so that I can take fewer next semester (my last semester of classes, and might be TA-ing). Three midterms spanned over one month was pretty draining. What really bugs me is that I am having issues with a cell line that I need for an experiment. I've been working on this project for about a year and the end is always *just* out of reach. If I can finish this experiment in the next few weeks I'll be on top of the world.
+
+I'm looking forward to getting back into a routine now that midterms are over. This might have to wait until after finals, though. My hobbies are related to exercise and health, so getting back into a rhythm with them will help me feel 100% and perform 100%.
+
+### **B :What concepts do you think you’ve really mastered (or are on the journey to mastery - I know, you’re still learning) in this class?**
+
+I'm getting pretty good at plotting. Conceptualizing what you want to plot to best demonstrate the meaning of a data set is a really important skill, and this class has given me ample practice. 
+
+I think I've also gotten pretty good at picking up a foreign data set and making sense of what's going on. Sometimes this is hard to do when the terminology, data types, etc. are outside of your realm of expertise. I have a feeling it's frowned up, but I really like renaming all the variables to something that makes sense to me prior to processing and analyzing.
+
+I'm nowhere near mastery - but I have improved with functions DRASTICALLY since we first covered them. I'm actually the most motivated to improve here - the utility is nearly endless and can expedite a lot of things. I've formulated a couple ideas for functions I want to write to automate calculations I often do in my lab work. Hopefully I'll get around to those sometime soon.
+
+### **C: What in this class do you find easy?**
+
+To be honest, not much. I have some background knowledge, but I find that I really need to sit down with new material and do practice problems. The labs have been unbelievably helpful for this. The readings are also really good. I think the next step for me is to keep practice - participating in Tidy Tuesdays, picking personal data analysis projects (more on this later), implementing into my lab work, etc.
+
+### **D: How would you describe your personal journey with learning to code?**
+
+As mentioned, I have some previous experience with MATLAB, working with signal processing and basic data analysis. I played aroud writing a couple basic scripts to analyze biometric data, but nothing complicated or impressive.
+
+I was really excited to take this class because I've always wanted to be proficient in a coding language for use in data analysis. This is a skill that will always help me in my career. I've always been a bit intimidated to learn, though - it's a lot! I've dabbled in free online classes and resources, but always found myself getting to busy to commit. I knew that taking this class would force me stick with it and commit to it.
+
+This is genuinely my favorite class I've ever taken. I love being able to develop a technical skill while also being able to use that skill to learn how to interpret data, analyze, design studies, etc. It's fun to learn about genetics and cell signaling pathways and other molecular stuff - but the uniqueness of this class and what I'm taking away from it every day is unparalleled. Jarrett's passion and humor is a huge factor in what makes this entertaining. I could see different instructors making this really boring and monotonous. Hat's off to Jarrett's continued efforts.
+
+### **E: Where do you see applying coding in your life outside of just stats?**
+
+I've mentioned a few already, but I'd like to talk about a passion project(s) I've always wanted to do. I'm a huge baseball nerd - I grew up playing obsessively and was even scouted by the New York Mets as a teenager (quick flex). I always regretted not pursuing it further but found passion in studying biology.
+
+One thing that separates baseball from other sports is how analytically-driven it is (Moneyball is just the tip of the iceberg). Data is recorded for every single thing that happens on the baseball field - the angle of the ball from the pitchers hand, the number of times and direction it spins, the speed of the ball off the bat, the path of runners on the bases or in the field, etc. All of these numbers are used to inform how players approach situations, how they train to improve their performance, the in-game strategies that managers implement, the scouting and evaluation of players by team's front offices, and the acquisition of players to improve a team.
+
+A lot of this data is made public, and a huge community has developed at [Fangraphs](https://www.fangraphs.com/), where professionals and amateurs analyze available data to answer interesting baseball research questions. I have ALWAYS wanted to contribute to the [Community Research](https://community.fangraphs.com/) page, but have never had the skill set. A lot of top contributors are full-time jobs at Fangraphs. And a lot of the top Fangraphs analysts have been hired by the Research & Development departments for Major League Baseball teams.
+
+I have a lot of interesting questions and ideas for contributing to this community. Starting over the winter, I'm going to take a stab at it. Maybe my final project for this course will lead to my first contribution.
+
+### **F: Where do you see the most opportunities for growth in your abilities?**
+
+I need to work on writing functions more. I've grown a lot, but I want to get more comfortable with designing the steps to reach my goal of the function. And also I want to get better at nesting functions. This can confuse me sometimes and spin my mind in circles.
+
+The biggest thing I want to improve upon is formulating a piecewise plan to reach an end-goal. Conceptualizing the intermediate steps and how to obtain each is a tough tasks sometimes. I think a reverse-engineering approach would be helpful. Getting better at this before starting to code will save me a lot of time, blood, sweat and tears.
+
+I also want to better understand which statistical tests to use when. I have seen a lot of people use certain statistical tests in their work just because other people did or because someone told them to. I want to be able to look at my data, formulate a question, figure out what I need to do to answer that question - including what type of statistics is most appropriate, then execute.
+
+### **G: Talk about your work in this course. What have you done? What haven’t you done? How has this been helpful to your growth - or not?**
+
+I've done a lot. I've learned the syntax and prose of R. I've practiced conceptualizing a game plan and the steps to reach my end-goal. I've had a lot of practice executing my game plan, realizing my mistakes, going back to the drawing board to fix them, and repeating. I've had a lot of practice looking at strange data that uses terms and approaches that are foreign to me.
+
+All of these things are transferable skills that won't end with this class.
+
+I haven't done too much digging into which statistical analyses to use when. I feel like that's coming in the final weeks.
+
+### **H: Did you find yourself stretching your abilities in this exam? Or did it just feel like wrote comfortable work? Tell me about it.**
+
+This exam stretched my abilities quite a bit. The hardest part was determining what I needed to do, then formulating steps to do it. I also think I have a tendency to brute-force things, and I tried really hard to be more elegant here. I have a lot of work to do to become truly elegant.
+
+For the most part, everything we did hear was related to something we have done in class, lab, or homework. I was able to use those resources to figure it out (I think - we'll find out). Without those resources (and the Back Row dream team), I think I would have been very stressed taking this.
+
+This exam was actually excellent practice for all the concepts we've covered and I feel much more comfortable with a lot of the material now.
+
+### **I: How would you assess yourself from this exam - weak/sufficient/strong. Why?**
+
+I almost always say sufficient/strong when asked this question because I don't quite believe that I've truly handled the concepts and tasks well, regardless of if I did. 
+
+I'm going to be more confident and say strong here. I worked my butt off on this and I think it paid off, for all of the reasons I've discussed throughout the meta questions. I took a lot of extra time to learn new skills here, such as theme design, advanced ggplot animations, combining plots to make figure descriptions, R markdown presentation, etc. I gave a couple good attempts at the Impress Yourself's - and even had some success. I better understand my strengths and the things I need to work on.
+
+### **J: How would you assess yourself on the first half of this course - weak/sufficient/strong? Why?**
+
+I am also going to say strong here. Comparing myself from day 1 to today is ridiculous. I've learned so much and truly feel I understand A LOT of the material and technique. I think I'm probably at the top in terms of effort, and it's really cool to see it pay off.
+
+### **K: What goals do you have for yourself for the rest of the course? What do you hope to accomplish, and how will this move you forward?**
+
+I've mentioned a couple - improving design and use of functions, making sweet gg animations (mostly combining multiples and cleaning them up), mastering my approach/game plan and how to execute it, and understanding which statistical test to use and when. I also want to get better at condensing my code into as few lines/functions/steps as possible. All of these things will help me work faster and smarter.
+
+I think tackling the extra credit assignments will help me get extra practice. I'm also going to continue attempting all the Impress Yourself's on homeworks, labs, etc. Once those run out, maybe I'll take a stab at running some baseball sabermetric analyses. I think at this point, I need as much practice as possible.
