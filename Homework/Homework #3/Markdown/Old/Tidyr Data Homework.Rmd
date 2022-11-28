@@ -1,0 +1,308 @@
+---
+title: "Tidyr Data Homework"
+author: "Nathan Strozewski"
+date: "2022-10-03"
+output: html_document
+---
+
+# Part 1: "Load Me"
+
+## Part 1a: Load libraries
+
+```{r loading_libraries_1}
+
+library(tidyr)
+library(dplyr)
+```
+
+## Part 1b: Read data without downloading
+
+```{r read_no_download}
+
+library(readr)
+kelp <- read_csv('https://github.com/kelpecosystems/observational_data/blob/master/cleaned_data/keen_cover.csv?raw=true')
+```
+
+## Part 1c: Read data with downloading
+
+```{r read_with_download}
+
+setwd("/Users/nathanstrozewski/Documents/Everything/Education/M.S. Biology UMB/Courses/003_F2022/Biological Data Analysis/Homework/Homework #3")
+kelp <- read.csv("keen_cover.csv")
+```
+
+# Part 2: Format
+
+## Part 2a: Is the data in the wide or long format?
+
+```{r data_review}
+
+str(kelp)
+summary(kelp)
+```
+###
+1. The data is in the long format
+2. I can tell this because each row is an observation, while each column is a variable that data was collected for during each observation
+
+# Part 3: Check it out
+
+## Part 3a: How many sites has each PI done?
+
+```{r PI_sites}
+
+kelp_PIsites <-
+  kelp %>% 
+  group_by(PI) %>% 
+  summarize(num_sites = n_distinct(SITE)) %>% 
+  pivot_wider(names_from = PI,
+              values_from = num_sites)
+kelp_PIsites
+```
+
+## Part 3b: How many years of data does each site have? Show it in descending order.
+
+```{r site_years}
+
+kelp_yearsofdata <-
+  kelp %>% 
+  group_by(SITE) %>% 
+  summarize(num_years = n_distinct(YEAR)) %>% 
+  pivot_wider(names_from = SITE,
+              values_from = num_years)
+kelp_yearsofdata
+
+kelp_yearsofdata_desc <- kelp_yearsofdata[order(kelp_yearsofdata, 
+                                                decreasing = TRUE)]
+kelp_yearsofdata_desc
+```
+
+## Part 3c: Impress yourself:
+### Make a figure showing which site was sampled when 
+### Use slice() (there are more elegant solutions)
+### For data viz, you can use geoms you’ve used before, or new ones, like geom_tile()!
+
+```{r site_sampling}
+
+library(ggplot2)
+
+kelp$SAMPLE_DATE <- as.Date(with(kelp, paste(YEAR, MONTH, DAY, sep = "-")), "%Y-%m-%d")
+kelp$SAMPLE_DATE
+
+kelp_sampledates <- ggplot(data = kelp) +
+  labs(title = "Which sites were sampled -",
+       subtitle = "and when?",
+       x = "Sampling Site",
+       y = "Date (YYYY-MM-DD") +
+  geom_tile(aes(x = SITE,
+                y = SAMPLE_DATE))
+kelp_sampledates
+```
+
+# Part 4: Let's look at some kelp!
+
+## Part 4a: Trim down to the cols YEAR, SITE, TRANSECT, PERCENT_COVER, FAMILY, and SPECIES
+
+```{r kelp_select}
+
+kelp %>% 
+  select(YEAR, SITE, TRANSECT, PERCENT_COVER, FAMILY, SPECIES) 
+```
+
+## Part 4b: Trim the data down to only the family “Laminariaceae”. After that, ditch the FAMILY column
+
+```{r kelp_Lami}
+
+kelp %>% 
+  filter(FAMILY == "Laminariaceae") %>% 
+  select(YEAR, SITE, TRANSECT, PERCENT_COVER, SPECIES)
+```
+
+## Part 4c: For each species is there only one measurement per species transect each year? Or do we need to worry?
+
+```{r kelp_sanity_check}
+
+str(kelp) # stir the data to find out why
+kelp[,13] # look at the size data to see if this explains why
+```
+### Answer:
+    1. I conclude that the measurements are likely from both adult and juveniles
+
+## Part 4d: Sum the cover for each species on each transect so that we only have one measurement per species (adults + juveniles together)
+
+```{r kelp_transect_species_condense}
+
+kelp_transectmean <- kelp %>% 
+  # filter(!is.na(PERCENT_COVER)) %>% 
+  group_by(SPECIES, TRANSECT) %>% # add site
+  summarize(mean_transect_cover = mean(PERCENT_COVER, na.rm = TRUE)) %>% 
+  print()
+
+# unclear if I am supposed to have one measurement per transect per species ...
+# or one measurement per species overall
+# the former is one measurement per transect per species
+# the following is one measurement per species
+
+kelp_overallcover <- kelp %>% 
+  group_by(SPECIES, SITE) %>% 
+  summarize(mean_transect_cover = mean(PERCENT_COVER, na.rm = TRUE)) %>% 
+  print()
+```
+
+## Part 4e: Make a plot showing the timeseries of kelps at each site. 
+### You’ll want stat_summary() here. 
+### You might even need it twice because ...
+### note - stat_summary() has a geom argument where you can do things like “line”. 
+### What might that do? Check it out! 
+### Facet this plot by species, so we can see the trajectory of each. 
+### Feel free to gussy this plot up however you would like (or not). 
+### Do you notice anything? Comment!
+
+```{r kelp_timeseries}
+
+kelp_timeseries <- ggplot(data = kelp,
+                          aes(x = SAMPLE_DATE,
+                              y = PERCENT_COVER)) + # plot with values
+  labs(title = "Kelp Cover Over Time",
+       x = "Date (YYYY-MM-DD)",
+       y = "Percent Cover") + # labels
+  stat_summary(aes(x = SAMPLE_DATE,
+               y = PERCENT_COVER), 
+               geom = "line",
+               width = 0.5,
+               size = 0.5,
+               alpha = 0.5) + # stats to summarize + dimensions
+  scale_y_continuous(limits=c(0, 110)) # change y-axis limit
+kelp_timeseries
+
+kelp_timeseries +
+  geom_jitter() + # adds jitter to allow plotting of overlapping data points
+  facet_wrap(~ SPECIES) # splits plots into individ. plots per species
+```
+### Notes:
+    1. I needed to add a jitter to plot the data, presumably because some points overlap
+    2. It is quite difficult to make out a trend
+    
+# Part 5: Wide Relationships
+
+## Part 5a: Using pivot_wider()
+### Use pivot_wider() to make species into columns with percent cover as your values
+### Note - be careful to fill in NAs as 0s
+
+```{r kelp_pivotwider}
+ 
+kelp_overallcover_wide <- kelp_overallcover %>% 
+  pivot_wider(names_from = SPECIES,
+                values_from = mean_transect_cover,
+                values_fill = 0)
+kelp_overallcover_wide
+```
+
+## Part 5b: Plot the relationship between Saccharina latissima and Laminaria digitata
+### Add a line to your ggplot stat_smooth(method = "lm")
+### Remember that you will need backticks ` around variables with spaces in them
+### What do you think?
+### Feel free to use any other geoms or explore however you like here
+
+```{r kelp_sacc_lati_relationship}
+
+ggplot(data = kelp_overallcover_wide,
+         aes(x = SITE,
+             y1 = get('Saccharina latissima'),
+             y2 = get('Laminaria digitata'))) +
+  geom_point(aes(x = SITE,
+                 y = get('Saccharina latissima'),
+                 color = "Saccharina latissima",
+                 group = 1)) +
+  geom_line(aes(x = SITE,
+                y = get('Saccharina latissima'),
+                color = "Saccharina latissima",
+                group = 1)) +
+  geom_point(aes(x = SITE,
+                 y = get('Laminaria digitata'),
+                 color = "Laminaria digitata",
+                 group = 1)) +
+  geom_line(aes(x = SITE,
+                y = get('Laminaria digitata'),
+                color = "Laminaria digitata",
+                group =1)) +
+  labs(title = "Mean Kelp Cover by Site",
+       subtitle = "Saccharina latissima vs. Laminaria digitata",
+       x = "Site",
+       y = "Mean Percent Kelp Cover (%)",
+       color = "Species")
+```
+
+## Part 5c: Pivot this correct long data back wide and then remake the figure from 4e
+### Does it look different? Does it tell a different story?
+
+### Notes:
+    1. I am a little confused by the wording here
+    2. The objects I am working with (the "correct" data) are in wide already
+    3. Pivoting this long creates some issues
+    4. Wouldn't it be easier to fill 0s for NAs in the original data and plot?
+
+```{r kelp_timeseres_reevaluation}
+
+# Replace NAs with base R
+
+kelp_noNAs <- kelp
+kelp_noNAs[is.na(kelp_noNAs)] = 0
+kelp_noNAs
+
+# Plot as in 4e
+
+kelp_timeseries_noNAs <- ggplot(data = kelp_noNAs,
+                          aes(x = SAMPLE_DATE,
+                              y = PERCENT_COVER)) + # plot with values
+  labs(title = "Kelp Cover Over Time",
+       x = "Date (YYYY-MM-DD)",
+       y = "Percent Cover") + # labels
+  stat_summary(aes(x = SAMPLE_DATE,
+                   y = PERCENT_COVER), 
+               geom = "line",
+               width = 0.5,
+               size = 0.5,
+               alpha = 0.5) + # stats to summarize + dimensions
+  scale_y_continuous(limits=c(0, 110)) # change y-axis limit
+kelp_timeseries_noNAs
+
+kelp_timeseries_noNAs +
+  geom_jitter() + # adds jitter to allow plotting of overlapping data points
+  facet_wrap(~ SPECIES) # splits plots into individ. plots per species
+```
+
+# Part 6: Meta Questions
+
+## Meta 1: 
+### How did it feel working with an unfamiliar dataset? What did you notice?
+    1. It took some time to understand what the variables were and what was actually collected in this data set
+    2. For example, I had to do some research to understand what "percent cover" and "transect" mean
+    2. A key (or variable guide) would be really helpful with any dataset I work with
+
+## Meta 2:
+### Split-Apply-Combine is…. a way of life, really. Is this something you have dealt with previously in your life or work? How comfortable are you with this concept?
+    1. I have dealt with the concept a bit without knowing the name for it
+    2. It's a bit of a logical pathway for problem solving
+    3. I need to work on knowing when it is needed / when to apply it
+    4. But I am comfortable with the use in this exercise
+
+## Meta 3:
+### When you’ve made datasets in the past, have they been wide, long, or something else? 
+### After this week and the Browman and Woo paper, what advice would you give to future you when making data?
+    1. Though I am new to the terms "wide" and "long", I have always made my datasets in the long format
+    2. This is because, conceptually, it is easier for me to understand data when it is recorded by observation, with each column being a different variable / measurement
+    3. When I have worked in Excel, I have ALWAYS made long datasets because filtering / sorting is really easy
+
+## Meta 4:
+### How much time did this take you, roughly? Again, I’m trying to keep track that these assignments aren’t killer, more than anything.
+    1. This took me ~5 hours
+    2. I had a bit of a hard time understanding what was being asked in some questions (ex: 4d, 5c)
+    3. So I played around with these quite a bit to deduce the goal. In 4d, I just did double the work to address both ways I interpretted the question
+
+## Meta 5:
+### Please give yourself a weak/sufficient/strong assessment on this assigment. Feel free to comment on why.
+    1. I will give myself a sufficient assessment
+    2. I was able to figure out how to complete the exercises
+    3. But, on 5c I chose to take a different solution that seemed easier. This might not have addressed the goal of the exercise but it saved a lot of time and effort
+    2. I understand the concepts, but it took me quite a bit of effort and troubleshooting to apply them here
+    3. I definitely need repeated practice to be able to do this without referencing the internet, my past work, class resources, etc.
