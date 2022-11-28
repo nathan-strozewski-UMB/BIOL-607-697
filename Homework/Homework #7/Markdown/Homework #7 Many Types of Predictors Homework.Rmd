@@ -1,0 +1,539 @@
+---
+title: 'Homework #7: Many Types of Predictors Homework'
+author: "Nathan Strozewski"
+date: "2022-11-28"
+output: html_document
+---
+
+# Question 1: Multiple Linear Regression: A Beachday!
+
+**For this question, we’ll use data from the venerable RIKZ dataset (download here) as seen in Zuur 2009 and described a bit more here in Feiberg’s book. Briefly, it’s from a survey invertebrates in Dutch beaches looking at zonation. We will look at a few variables:**
+1. **Richness = species richness (i.e., the number of species counted).**
+2. **NAP = height of the sample site (relative to sea level). Lower values indicate sites closer to or further below sea level, which implies more time spent submerged.**
+3. **exposure: index composed of the surf zone, slope, grain size, and depth of anaerobic layer**
+4. **grainsize: the size of sediment/sand grains in the sample**
+5. **Beach - a unique identifier of the beach sampled**
+
+## Step 1: Load libraries
+
+```{r libraries}
+
+library(tidyverse)
+library(readr)
+library(car)
+library(broom)
+library(emmeans)
+library(performance)
+library(visreg)
+
+```
+
+## Step 2: Set theme
+
+```{r theme}
+
+custom_theme <- function(){ 
+  font <- "Helvetica" # font selection
+    
+    theme_minimal() %+replace% # theme based on minimal with following replacements
+    
+    theme(
+      
+      panel.grid.major = element_blank(), # leave grids and axis ticks blank
+      panel.grid.minor = element_blank(),    
+      axis.ticks = element_blank(),
+      axis.line = element_line(color = "black",
+                               size = 1),
+      panel.border = element_rect(color = "black",
+                                  fill=NA,
+                                  size=1),
+      plot.title = element_text(family = font,            
+                   size = 20,                
+                   face = 'bold',            
+                   hjust = 0.5, # move title to center horizontally
+                   vjust = 2), # move title up a wee bit
+      plot.subtitle = element_text(         
+                   family = font,           
+                   size = 15,
+                   hjust = 0.5),               
+      plot.caption = element_text(           
+                   family = font,           
+                   size = 10,                 
+                   hjust = 1), # put caption in right corner
+      axis.title = element_text(             
+                   family = font,
+                   face = 'italic',
+                   size = 15),               
+      axis.text = element_text(              
+                   family = font,            
+                   size = 10),               
+      axis.text.x = element_text(            
+                    margin = margin(t = 2, # top
+                                    r = 2, # right
+                                    b = 2, # bottom
+                                    l = 2)) # left
+    )
+}
+
+```
+
+
+
+## Step 3:
+
+**Load the data, select to those variables (you might want to also retain Sample, but, eh), and visually inspect the data. Are there any problems you might see in the data? Things you might want to mutate or watch our for in thinking about building models? Or is everything copacetic for a model where NAP, exposure, and grainsize predict species richness?**
+
+```{r q1_s3}
+
+inverts <- read.csv("/Users/nathanstrozewski/Documents/Everything/Adult Stuff/Education/M.S. Biology UMB/Courses/003_F2022/Biological Data Analysis/Homework/Homework #7/Data/rikz.csv")
+
+str(inverts)
+summary(inverts)
+
+inverts <- inverts %>% 
+  select(Sample, Richness, NAP, exposure, grainsize) # select vars
+
+inverts[is.na(inverts) | inverts=="Inf"] = NA # set Inf to NA
+
+inverts <- inverts %>% 
+  drop_na() # remove NAs
+
+```
+
+### Step 4: Visualize the data
+
+This was not outlined in the homework instructions, but will inform me about certain mods I might need to make to my model, such as log transformation.
+
+```{r q1_s4}
+
+richbyNAP_plot <- ggplot(data = inverts,
+                         mapping = aes(x = NAP,
+                                       y = Richness,
+                                       color = Sample)) +
+  geom_point() + # model relationship between NAP and Richness
+  custom_theme()
+
+richbyNAP_plot
+
+richbyexposure_plot <- ggplot(data = inverts,
+                         mapping = aes(x = exposure,
+                                       y = Richness,
+                                       color = Sample)) +
+  geom_point() + # model relationship between exposure and Richness
+  custom_theme()
+
+richbyexposure_plot
+
+richbygrainsize_plot <- ggplot(data = inverts,
+                         mapping = aes(x = grainsize,
+                                       y = Richness,
+                                       color = Sample)) +
+  geom_point() + # model relationship between grainsize and Richness
+  custom_theme()
+
+richbygrainsize_plot
+
+```
+
+Exposure is discrete while the grainsize and NAP are continuous. There is no clear indication yet that any mods need to be implemented with my model.
+     
+## Step 5: Model
+
+**Model richness as a function of exposure, grainsize, and NAP. Evaluate the assumptions of a linear model. If it does not meet them, either log(x+1) or asinh transform your response variable. It might still not be perfect, but, you’ll see why later…**
+
+
+```{r lm}
+
+inverts_lm <- lm(Richness ~ NAP + exposure + grainsize,
+                data = inverts)
+
+check_model(inverts_lm)
+
+residualPlots(inverts_lm,
+              test=FALSE)
+
+```
+
+PPC looks ok - but not great. Model-predicted data is shifted higher in richness than observed data. This indicates that the model isn't an excellent fit. Aside from this, I'm only concerned about HOV - the reference line is not flat and horizontal. The residuals look pretty good, with only the fitted values really bowing.
+
+I am going to try asinh transforming. I'll compare to the original model and see if any of the issues are resolved.
+ 
+## Step 6: Model transformation
+
+```{r transformation}
+
+inverts_lm_asinh <- lm(asinh(Richness) ~ NAP + exposure + grainsize,
+                       data = inverts)
+
+check_model(inverts_lm_asinh)
+
+```
+
+While asinh transforming improves the PPC, it makes the normality and linearity worse while having little to no effect on HOV. The instructions seem to suggest that my model will look weird and that I should proceed anyways...I'm more comfortable proceeding with a clean PPC, so I will stick with the asinh transformed model going forward.
+
+## Step 7: Evaluate the model
+
+**What does your model mean? Tell us what the coefficients tell us - both unstandardized and standardized. How much variation in the data is explained by the predictors?**
+
+```{r evaluate_richness}
+
+tidy(inverts_lm_asinh)
+
+r2(inverts_lm_asinh)
+
+```
+
+All independent variables considered in this model (NAP, exposure, and grainsize) decrease richness. Some of this makes sense intuitively - for example, if kelp are more exposed they'll be picked off by predators and richness will decrease.
+
+The R2 for the model is 0.736. An R2 of 1.0 would indicate that all the variance in the model is explained by the independent variables, while an R2 of 0 would indicate that none of the variance is. The R2 of 0.736 in this model suggests that much but not all of the variance in Richness is explained by NAP, exposure, and grainsize - there's something else that this model doesn't consider.
+
+## Step 8: Plot model
+
+**Show us a plot that teases out the independent contribution of each predictor. What does it tell you that just looking at the coefficients above did not. Or does it not tell you anything new?**
+
+```{r richness_lm_plot}
+
+richness_predict <- augment(inverts_lm_asinh,
+                            interval="confidence") %>% 
+  rename(Richness = "asinh(Richness)")
+
+richness_prediction_plot <- ggplot(data = richness_predict,
+                                   mapping = aes(x = NAP,
+                                                 color = grainsize)) +
+  geom_point(mapping = aes(y = Richness)) +
+  geom_line(mapping = aes(y = .fitted)) +
+  geom_ribbon(mapping = aes(ymin = .lower,
+                            ymax = .upper),
+              fill = "lightgrey",
+              alpha = 0.5,
+              color = NA) +
+  facet_wrap(vars(exposure)) +
+  scale_color_gradient(low = "black",
+                       high = "magenta") +
+  custom_theme()
+richness_prediction_plot
+
+```
+
+## Step 9: Cool viz
+
+**Based on all of the above, construct some cool visualization on the original data scale that tells you something useful and interesting about what determines species richness on a beach.**
+
+```{r richness_coolviz}
+   
+richness_coolviz <- ggplot(inverts,
+                           mapping = aes(x = NAP,
+                                         y = Richness,
+                                         color = as.factor(exposure))) +
+  geom_line() +
+  geom_point() +
+  custom_theme() +
+  labs(title = "Influence of NAP on Richness",
+       subtitle = "By Exposure Type",
+       x = "NAP",
+       y = "Richness",
+       color = "Exposure")
+
+richness_coolviz
+
+```
+
+# Question 2: Multiple Categorical Variables
+
+**To examine how models with multiple categorical models work, let’s take a look at good ole’ palmerpenguins! In this data, We’ll look at the effects of species, sex, and year (as a categorical variable!) on bill depth.**
+
+## Step 1:
+
+**To begin with, load up the data, and filter out anything with an NA for sex and making sure year is no longer continuous. Then, visualize the data, just to get an idea of what is going on here. Do you notice anything?**
+
+```{r penguin_data}
+
+library(palmerpenguins)
+library(dplyr)
+
+data(penguins)
+
+penguins <- penguins %>% 
+  filter(!is.na(sex)) %>% 
+  mutate(year = as.factor(year))
+str(penguins)
+
+penguin_basicviz <- ggplot(data = penguins,
+                           mapping = aes(x = year,
+                                         y = bill_depth_mm,
+                                         color = sex)) +
+  geom_violin() +
+  facet_wrap(vars(species)) +
+  custom_theme()
+
+penguin_basicviz
+
+```
+
+This basic visualization shows that bill depth is larger for males than females, and smaller for the Gentoo species compared to Adelie and Chinstrap species. There is some variance across year but this isn't a metric of age, rather a metric of sampling date - so I won't put too much stock into this.
+
+Step 2:
+
+**Fit the model and check assumptions. Be sure to be careful of linearity. Do we meet assumptions here?**
+
+```{r penguin_model}
+
+penguin_lm <- lm(bill_depth_mm ~ species + sex + year,
+                 data = penguins)
+
+check_model(penguin_lm)
+
+```
+
+The PPC is nearly perfect. It is hard to interpret the points on the linearity and HOV plots, but the reference lines are flat and horizontal. Everything looks good so far.
+
+Step 3:
+
+**Great! Now - what does it all mean? Use the coefficients and/or the expected means to evaluate which of these predictors appear to influence bill depth.**
+
+```{r penguin_eval}
+
+sex_em <- emmeans(penguin_lm,
+          specs = ~sex) %>% 
+  contrast(method = "pairwise") %>% 
+  confint()
+
+year_em <- emmeans(penguin_lm,
+           specs = ~year) %>% 
+  contrast(method = "pairwise") %>% 
+  confint()
+
+species_em <- emmeans(penguin_lm,
+              specs = ~species) %>% 
+  contrast(method = "pairwise") %>% 
+  confint()
+
+sex_em
+year_em
+species_em
+
+r2(penguin_lm)
+
+```
+
+Males have larger bill depths than females. Bill depths were larger in 2007 than 2008 or 2009, and were larger in 2009 than 2008. Gentoo penguins had the smallest bill depths while Chinstraps had the largest.
+
+The R2 for the model is 0.825 - indicating that a large portion (but not all) of the variance in the model is explained by the included independent variables. 
+
+Step 4:
+
+**How would you visualize what you learned in 2.3 to communicate it to a reader in a paper? Make the relevant plots, and make it fancy! (What? I’m a fan of the series).**
+
+```{r penguin_viz}
+
+library(visreg)
+library(ggpubr)
+
+sex_visreg <- visreg(penguin_lm,
+                     "sex",
+                     gg = TRUE) +
+  custom_theme() +
+  labs(x = "Sex",
+       y = "Bill Depth (mm)")
+sex_visreg
+
+species_visreg <- visreg(penguin_lm,
+                         "species",
+                         gg = TRUE) +
+  custom_theme() +
+  labs(x = "Species",
+       y = "Bill Depth (mm)")
+species_visreg
+
+year_visreg <- visreg(penguin_lm,
+                      "year",
+                      gg = TRUE) +
+  custom_theme() +
+  labs(x = "Year",
+       y = "Bill Depth (mm)")
+
+figure <- ggarrange(species_visreg,
+                    sex_visreg,
+                    year_visreg,
+                    labels = c("A", "B", "C"),
+                    ncol = 3, nrow = 1)
+figure
+
+
+figure_text <- paste("Figure X: A linear model was generated to examine the influence of species,",
+                     "sex, and year on penguin bill depth. (A) Bill depth was plotted by penguin species.", 
+                     "Gentoo penguins exhibited the lowest bill depth. (B) Bill depth was plotted by",
+                     "sex. Males exhibited larger bill depths than females. (C) Bill depth was plotted",
+                     "by year. Marginal differences were observed across years, with 2007 demonstrating",
+                     "the largest bill depth.")
+
+figure_para <- ggparagraph(text = figure_text,
+                                  size = 10,
+                                  color = "black") # format description
+
+figure_final <- ggarrange(figure,
+                          figure_para,
+                          ncol = 1,
+                          nrow = 2)
+
+figure_final
+
+```
+
+# Question 3: Comparing Means with Covariates
+
+**We will wrap up with a model mixing continuous and discrete variables. And you’ve seen it before! In this dataset from Scantlebury et al, the authors explored how caste affected the energy level of naked mole rats. BUT - castest might differ by mass as well!**
+
+## Step 1:
+
+**Load and plot the data. Look at how each pair of variables relates to one another here. Is there a chance our covariate might be important? Impress yourself by making them super fancy! Geom to your heart’s content.**
+
+
+```{r rats}
+
+rats <- read.csv("/Users/nathanstrozewski/Documents/Everything/Adult Stuff/Education/M.S. Biology UMB/Courses/003_F2022/Biological Data Analysis/Homework/Homework #7/Data/18e4MoleRatLayabouts.csv")
+
+str(rats)
+
+rat_plot <- ggplot(data = rats,
+                   mapping = aes(x = lnmass,
+                                 y = lnenergy,
+                                 color = caste)) +
+  geom_point() +
+  geom_line() +
+  custom_theme()
+
+rat_plot
+
+```
+
+Castes clearly vary in mass. It is hard to discern the relationship between energy and mass here. Maybe workers have higher energy?
+
+## Step 2:
+
+**Fit a model with BOTH sets of predictors, using least squares and evaluate all relevant assumptions. List them out as you test them. What new assumption are we testing here? Can we use this model? If not, fix it. But if we can, no fix is needed!**
+
+
+```{r rat_model}
+
+rat_lm <- lm(lnenergy ~ lnmass + caste,
+             data = rats)
+
+check_model(rat_lm)
+
+residualPlots(rat_lm, test=FALSE)
+check_predictions(rat_lm) %>%  plot()
+check_normality(rat_lm) %>%  plot(type = "qq")
+check_outliers(rat_lm) %>%  plot(type = "bar")
+
+```
+
+PPC looks pretty good. Some wavey-ness HOV. I can try asinh transforming.
+
+Looking at the residuals - there is a bow shape to the fitted values. This may also require log transformation. A closer look at PPC indicates that the model is a good-ish fit for the observed data - in line but not an exact match. Everything looks good with the normality. No outliers.
+
+
+
+```{r rat_log}
+
+rat_asing_lm <- lm(asinh(lnenergy) ~ lnmass + caste,
+                 data = rats)
+
+check_model(rat_asing_lm)
+
+```
+
+Little or no difference in HOV when asinh-transformed. I'm going to use the original model.
+
+## Step 3:
+
+**Compare the two castes energy expendeture at the mean level of log mass. Are they different? How would you discuss your conclusions.**
+
+
+```{r}
+
+emmeans(rat_lm,
+        specs = ~caste) %>% 
+  contrast(method = "pairwise") %>% 
+  confint()
+
+```
+
+Lazy mole rates have a lower energy expenditure than worker mole rats (see estimate = -0.393). A better way to say this: 
+
+Energy expenditure varies by mole rat caste, with worker mole rats expending more energy than lazy mole rats.
+
+## Step 4:
+
+**Plot the fit model with the fit confidence interval on top of the data. Use modelr::data_grid() and broom::augment().**
+
+**Impress yourself! Do the same thing, but backtransforming both your predicted values AND lnmass (so, plotting mass on the x and energy on the y) with CIs. Note - this is not a trick, and should only require some basic mutates (or advanced, if you want to dig into across() and where() - which, well, you should check them out!). Do you learn something different from this plot? Note, a log-log relationship corresponds to the following: if y = kx^n then log(y) = log(k) + nlog(n)**
+
+```{r}
+
+library(modelr)
+
+energy_predictions <- data_grid(rats,
+                                lnmass = seq_range(lnmass, 100),
+                                caste = caste) %>% 
+  add_predictions(model = rat_lm, var = "lnenergy") %>% 
+  augment(rat_lm,
+          newdata = .,
+          interval = "confidence")
+
+energy_predictions_plot <- ggplot(data = rats,
+                                  mapping = aes(x = lnmass,
+                                                y = lnenergy)) +
+  geom_point() +
+  geom_line(data = energy_predictions,
+            mapping = aes(group = caste)) +
+  geom_ribbon(data = energy_predictions,
+              mapping = aes(group = caste,
+                            ymin = .lower,
+                            ymax = .upper),
+              color = "lightgrey",
+              alpha = 0.25) +
+    facet_wrap(vars(caste)) +
+    custom_theme() +
+  labs(title = "Influence of Mass and Caste on Energy Expenditure",
+       subtitle = "In Naked Mole Rats",
+       x = "Mass",
+       y = "Energy Expenditure")
+
+energy_predictions_plot
+
+```
+
+# Meta Questions:
+
+## Question 1:
+
+**Where do you think we will go next with models like there?**
+
+Since I am completing this a couple weeks behind - I am cheating a bit here. The next logical steps are too look at multiple predictors (also multiple categorical predictors) in more depth, looking at interaction effects, and dealing with more advanced models (such as GLMs).
+
+## Question 2:
+
+**How do you think you will use models like these in your own work?**
+
+I can apply some basic models to my work. For example, I can model how the level of my protein of interest, Capicua, influences wing size, wing vein length, and wing vein arborization. The utility of these models in my work is pretty limited.
+
+I think there are interesting ways to apply these models to my hobby - baseball data analysis. I would like to model how pitch factors (such as spin rate, speed, vertical break, horizontal break, etc.) influence pitch outcome (strike outs, hits, home runs, etc.).
+
+## Question 3: 
+
+**What about what we did this week was the most difficult for you to understand? Where are you feeling the boundaries of your understanding pushed the most?**
+
+This stretch of weeks nicely builds upon one another. I did not particularly struggle with anything during this week. After completing the midterm, this work is very easy now.
+
+## Question 4:
+
+**How much time did this take you, roughly? Again, I’m trying to keep track that these assignments aren’t killer, more than anything.**
+
+This took me ~ 45-60 min. It probably would have taken longer, but the midterm made me much more efficient with these types of tasks.
+
+Question 5:
+
+**Please give yourself a weak/sufficient/strong assessment on this assignment. Feel free to comment on why.**
+
+Strong. I feel really comfortable with the process to create and analyze models, as well as the logic behind these steps. This is something that required a bit of practice, and having weeks 5-9 build on each other (plus the midterm) really helped drill these home.
