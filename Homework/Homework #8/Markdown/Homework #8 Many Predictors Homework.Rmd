@@ -1,0 +1,419 @@
+---
+title: 'Homework #8 Many Predictors Homework'
+author: "Nathan Strozewski"
+date: "2022-11-29"
+output: html_document
+---
+
+## *Set theme*
+
+```{r theme}
+
+custom_theme <- function(){ 
+  font <- "Helvetica" # font selection
+    
+    theme_minimal() %+replace% # theme based on minimal with following replacements
+    
+    theme(
+      
+      panel.grid.major = element_blank(), # leave grids and axis ticks blank
+      panel.grid.minor = element_blank(),    
+      axis.ticks = element_blank(),
+      axis.line = element_line(color = "black",
+                               size = 1),
+      panel.border = element_rect(color = "black",
+                                  fill=NA,
+                                  size=1),
+      plot.title = element_text(family = font,            
+                   size = 20,                
+                   face = 'bold',            
+                   hjust = 0.5, # move title to center horizontally
+                   vjust = 2), # move title up a wee bit
+      plot.subtitle = element_text(         
+                   family = font,           
+                   size = 15,
+                   hjust = 0.5),               
+      plot.caption = element_text(           
+                   family = font,           
+                   size = 10,                 
+                   hjust = 1), # put caption in right corner
+      axis.title = element_text(             
+                   family = font,
+                   face = 'italic',
+                   size = 15),               
+      axis.text = element_text(              
+                   family = font,            
+                   size = 10),               
+      axis.text.x = element_text(            
+                    margin = margin(t = 2, # top
+                                    r = 2, # right
+                                    b = 2, # bottom
+                                    l = 2)) # left
+    )
+}
+
+```
+
+## *Task 1: Replicated Regression and Interaction Effects*
+
+**One of my favorite papers on experimental design is Cottingham et al. 2005 which posits that regression can actually be a better way to get inference than many categorical levels of treatments - most of the time. If your treatment effects are nonlinear, categorical predictors are better, as they can accomodate any shape of a curve. They thus advocate for ‘replicated regression’ - a continuous experimental design with replication at each level of the treatment. (Note: we’ll be reading this paper in a few weeks, but, feel free to dig in now if you’d like).**
+
+**In lab, we looked at an experiment from my time as a graduate student manipulating predators in kelp forest mesocosms - data here and, if you want, paper here. This was, in some ways, a replicated regression design, with Predator_Diversity as the continuous treatment (0, 1, or 3 species) and Porp_Change as the response.**
+
+### *Step 1:*
+
+**Filter out the no herbivore treatment - it has an NA for diversity and is not useful here. Also….. is trial really continuous?**
+
+```{r}
+
+library(dplyr)
+
+kelp <- read.csv("/Users/nathanstrozewski/Documents/Everything/Adult Stuff/Education/M.S. Biology UMB/Courses/003_F2022/Biological Data Analysis/Homework/Homework #8/Data/kelp_pred_div_byrnesetal2006.csv")
+
+str(kelp)
+
+kelp <- kelp %>% 
+  filter(Treatment != "No Herbivores")
+
+```
+
+Trial is not continuous - it is discrete because there are only 3 possible values.
+
+### *Step 2:*
+
+**Fit the appropriate two models (remember, the experiment was run in three Trials) with diversity as a continuous versus discrete variable (i.e., one model with continuous, one model with discrete). Do the assumption tests differ, or is everything OK? If you are really worried, note, you can also just use Change_g as the response variable with Before_g as a covariate (weight before versus change in weight) - it’s what I actually did in the paper.**
+
+```{r}
+
+library(performance)
+
+kelp_cont <- kelp %>% 
+  mutate(Trial = as.character(Trial))
+
+kelp_cont_lm <- lm(Change_g ~ Before_g + Predator_Diversity:Trial,
+                   data = kelp_cont)
+check_model(kelp_cont_lm)
+
+kelp_factor <- kelp %>% 
+  mutate(Predator_Diversity = as.character(Predator_Diversity))
+
+kelp_fact_lm <- lm(Change_g ~ Before_g + Predator_Diversity:Trial,
+                   data = kelp_factor)
+check_model(kelp_fact_lm)
+
+```
+
+I opted to look at Change_g and use Before_g as a covariate - to be as safe as possible. I set up the continuous model by looking at the influence of Before_g, Predator_Diversity (continuous), and Trial, as well as the interaction between Predator_Diversity and Trial. The PPC looks good but there are clear issues with linearity and HOV. This might be the result of data points to the right of the plots. Are these outliers? I can check for this and then also  try log-transforming.
+
+I set up the discrete model by mutating Predator_Diversity to a factor. Same assumption violations as the continuous model.
+
+```{r outliers}
+
+check_outliers(kelp_cont_lm)
+check_outliers(kelp_fact_lm)
+
+```
+
+Cool. No outliers. Let's see about log-transforming.
+
+```{r message = FALSE}
+
+kelp_cont_log_lm <- lm(log(Change_g) ~ Before_g + Predator_Diversity:Trial,
+                       data = kelp_cont)
+check_model(kelp_cont_log_lm)
+
+kelp_fact_log_lm <- lm(log(Change_g) ~ Before_g + Predator_Diversity:Trial,
+                   data = kelp_factor)
+check_model(kelp_fact_log_lm)
+
+```
+
+It's hard to tell how much this really helped. I would say that this improved the continuous model and didn't really impact the discrete model. I'll use these going forward.
+
+### *Step 3:*
+
+**If you compare results - in both - asking if the diversity effect differed by trial (you’ll need both emmeans and emtrends here) does it really look like there is an interaction with trial? If not, refit the model with no interaction!**
+
+```{r}
+
+library(emmeans)
+
+emmeans(kelp_cont_log_lm,
+        specs = ~ Predator_Diversity:Trial)
+
+emtrends(kelp_fact_log_lm,
+         specs = ~ Predator_Diversity,
+         var = "Trial")
+
+```
+
+There appears to be a difference in Predator_Diversity by Trial in the continuous model, as emmean value varies (3.15 for Trial 1, 4.30 for Trial 2, 3.59 for Trial 3). There also appears to be a difference with the discrete model, as Trial.trend varies (-0.060 for trial 1, 0.509 for trial 2, 0.339 for trial 3).
+
+I am going to keep trial in my models.
+
+### *Step 4*
+
+**OK, with the two models you now have, what different inferences about the role of predator diversity do they give you, seemingly? Use one or more of the tools you have at your disposal - from things in the emmeans package (hey, check out that at argument for emmeans()…) to visualizations to make a convincing case.**
+
+```{r}
+
+library(visreg)
+library(ggplot2)
+library(ggpubr)
+
+cont_visreg <- visreg(kelp_cont_lm,
+                      "Predator_Diversity",
+                      gg = TRUE,
+                      by = "Trial") +
+  custom_theme() +
+  labs(title = "Influence of Predator Diversity on Kelp Mass",
+       subtitle = "With Predator Diversity Treated as Continuous",
+       x = "Predator Diversity",
+       y = "Change in Kelp Mass (g)")
+
+cont_text <- paste("Figure 1: The influence of predator diversity, starting kelp mass, and trial",
+                   "on the change in kelp mass was modeled using a log-transformation and plotted.",
+                   "Predator diversity was treated as a continuous variable. Overall change in mass",
+                   "varied by trial, but increased predator diversity was associated with an",
+                   "increase in kelp mass across each.")
+
+cont_para <- ggparagraph(text = cont_text,
+                         size = 10,
+                         color = "black")
+
+cont_final <- ggarrange(cont_visreg,
+                       cont_para,
+                       ncol = 1,
+                       nrow = 2,
+                       heights = c(2.5, 1))
+
+fact_visreg <- visreg(kelp_fact_lm,
+                      "Predator_Diversity",
+                      gg = TRUE,
+                      by = "Trial") +
+  custom_theme() +
+  labs(title = "Influence of Predator Diversity on Kelp Mass",
+       subtitle = "With Predator Diversity Treated as Discrete",
+       x = "Predator Diversity",
+       y = "Change in Kelp Mass (g)")
+
+fact_text <- paste("Figure 2: The influence of predator diversity, starting kelp mass, and trial",
+                   "on the change in kelp mass was modeled using a log transformation and plotted.",
+                   "Predator diversity was treated as a discrete variable. Overall change in mass",
+                   "varied by trial, but increased predator diversity was associated with an", 
+                   "increase in kelp mass across each.")
+
+fact_para <- ggparagraph(text = fact_text,
+                         size = 10,
+                         color = "black")
+
+fact_final <- ggarrange(fact_visreg,
+                       fact_para,
+                       ncol = 1,
+                       nrow = 2,
+                       heights = c(2.5, 1))
+
+cont_final
+fact_final
+```
+
+I am interpreting positive changes in mass to mean increase and negative changes in mass to mean a decrease.
+
+The upward slope of the trendlines in Figure 1 align with the upward trend of the lines in Figure 2. Therefore, both figures (and methods for considering Predator_Diversity) ultimately tell me that increased predator diversity is associated with increased kelp mass (positive change in mass). However, I am less convinced by Figure 1 because the points do not follow the trendline. This happens because the x-values are treated as continuous despite existing as only 3 possible values. Figure 2 is more convincing because predator diversity is treated as discrete, and the points are all therefore visualized separately. This creates 3 different lines to compare per trial, but the trend is quite obvious.
+
+### *Step 5: IMPRESS YOURSELF*
+
+**If you really want to get into the weeds, in the paper, I also did comparisons between indivity monocultures (1 species treatments, which varied in identity) to the polyculture (the mixture) to ask if the polyculture was better than the best performing monoculture - something in the Biodiversity Ecosystem Function literature known as the Overyielding. Do you find evidence of that. Note - this is ticky, so, impress yourself if you want, but, don’t worry if you want to move on.**
+
+```{r}
+
+kelp_culture <- lm(Change_g ~ Before_g + Treatment:Trial,
+                   data = kelp)
+
+check_model(kelp_culture)
+
+cult_visreg <- visreg(kelp_culture,
+                      "Treatment",
+                      gg = TRUE,
+                      by = "Trial") +
+  custom_theme() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  labs(title = "Influence of Predator Type on Kelp Mass",
+       x = "Predator Type",
+       y = "Change in Kelp Mass (g)")
+
+cult_text <- paste("Figure 3: The influence of starting kelp mass, predator type, and trial",
+                   "on the change in kelp mass was modeled and plotted.")
+
+cult_para <- ggparagraph(text = cult_text,
+                         size = 10,
+                         color = "black")
+
+cult_final <- ggarrange(cult_visreg,
+                       cult_para,
+                       ncol = 1,
+                       nrow = 2,
+                       heights = c(2.5, 1))
+
+cult_final
+```
+
+To do this, I swapped out Predator_Diversity in my previous model for Treatment. The model met assumptions very well - no concerns.
+
+There was a general increase in kelp mass across trials. Within each, Dungeness Crab monoculture and No Predators decreased kelp mass. Predator Mixture (polyculture) and Rock Crab monoculture slightly decreased kelp mass in trials 1 & 2, but slightly increased kelp mass in trial 3. Sun Star monoculture slightly decreased kelp mass in trial 1, but slightly increased kelp mass in trials 2 & 3. Overall, the polyculture outperformed all monocultures except Sun Star by reducing the loss or increasing the gain in kelp mass. 
+
+As a future direction, I would determine whether the presence of Sun Star in the polyculture is driving this effect.
+
+## *Task 2: Interactions with Continuous Variables*
+
+**Scientists wanted to simulate how different biological interactions might influence the carbon burial potential of sinking algae in the deep ocean. Let’s use this simulated data which features sinking rate, microbial abundance, and detritovore abundance as predictors of net carbon sequestration.**
+
+### *Step 1:*
+
+**Load the data, inspect it, and fit a model with a 3-way interaction, Do you meet assumptions?**
+
+```{r algae_model}
+
+algae <- read.csv("/Users/nathanstrozewski/Documents/Everything/Adult Stuff/Education/M.S. Biology UMB/Courses/003_F2022/Biological Data Analysis/Homework/Homework #8/Data/c_burial_sims.csv")
+
+str(algae)
+
+algae_lm <- lm(net_carbon_sequestration ~ sink_rate + microbial_abundance + detritivore_biomass,
+               data = algae)
+
+check_model(algae_lm)
+
+```
+
+PPC looks pretty good. Some issues with linearity and HOV at the tail end of the plots - but majority of data meets assumptions. Let me see if log- or asinh-transforming will help at all.
+
+```{r log_model}
+
+algae_log_lm <- lm(log(net_carbon_sequestration) ~ sink_rate + microbial_abundance + detritivore_biomass,
+                   data = algae)
+
+check_model(algae_log_lm)
+
+```
+
+This did not really improve anyhing. Also I'm not sure how to interpret the PPC here. So I am definitely not going to use this model.
+
+```{r asinh_model}
+
+algae_asinh_lm <- lm(asinh(net_carbon_sequestration) ~ sink_rate + microbial_abundance + detritivore_biomass,
+                     data = algae)
+
+check_model(algae_asinh_lm)
+
+
+```
+
+This worsened the PPC while not improving anything. I'm going to stick with the intiial model going forward.
+
+### *Step 2:*
+
+**Now the fun part - inference. What do the coefficients tell you?**
+
+```{r}
+
+library(broom)
+
+tidy(algae_lm)
+
+r2(algae_lm)
+
+```
+
+Mean net carbon sequestration increases as sink rate, microbial abundance, and detritivore biomass increase. However, the R2 value for the model is only 0.193 - indicating that only a small portion of the variance in net carbon sequestration iss likely to be explained by the independent variables in this model.
+
+### *Step 3:*
+
+**OK - that’s a lot. Use your skills of visualization do tease out what the data is telling us. You can use visreg() or augment() with data_grid() or whatever you would like. Make this model make sense so that you can tell your audience how these three parameters work together to influence carbon burial!**
+
+```{r}
+
+sink_visreg <- visreg(algae_lm,
+                      "sink_rate",
+                      gg = TRUE) +
+  custom_theme() +
+  labs(x = "Sink Rate",
+       y = "C Sequest.")
+
+microb_visreg <- visreg(algae_lm,
+                        "microbial_abundance",
+                        gg = TRUE) +
+  custom_theme() +
+  labs(x = "Microbial Abundance",
+       y = "C Sequest.")
+
+detrit_visreg <- visreg(algae_lm,
+                        "detritivore_biomass",
+                        gg = TRUE) +
+  custom_theme() +
+  labs(x = "Detritivore Biomass",
+       y = "C Sequest.")
+
+algae_figure <- ggarrange(sink_visreg,
+                          microb_visreg,
+                          detrit_visreg,
+                          labels = c("A", "B", "C"),
+                          ncol = 3, nrow = 1)
+
+algae_text <- paste("Figure 4: A linear model was generated to examine the influence of sink rate,",
+                    "microbial abundance, and detritivore biomass on the net carbon sequestration",
+                    "of algae. (A) Sink rate increased net carbon sequestration substantially,",
+                    "while (B) microbial abundance and (C) detritivore biomass increased net",
+                    "carbon sequestration marginally.")
+
+algae_para <- ggparagraph(text = algae_text,
+                          size = 10,
+                          color = "black") # format description
+
+algae_final <- ggarrange(algae_figure,
+                         algae_para,
+                         ncol = 1,
+                         nrow = 2)
+
+algae_final
+
+```
+
+## *Meta Questions*
+
+### *Question 1:*
+
+**What do you find most interesting about interaction effects? What do you find most intimidating?**
+
+I think its a really interesting way to parse out which variables are driving observed effects. You can determine which variables aren't needed in your model through this method too.
+
+I still need to practice knowing when to implement this. When should I need to know if there is an interaction effect? When is it important to look at both the interaction & the vars on their own, as opposed to just the vars on their own or just the interaction?
+
+### *Question 3:*
+
+**Where do you see interaction effects fitting into your own research?**
+
+I don't think there is necessarily a place for me to fit a model and look at interaction effects in my work - but interaction effects are abundant in molecular biology. I'm studying one protein and it's interactions - but those interactors are influenced by countless factors such as protein synthesis levels, transport, cell conditions, and their own interactions.
+
+### *Question 3:*
+
+**Now that we have fully explored purely “linear” models, what one question or concern do you still have?**
+
+I mentioned this previously, but I still need to work on understanding when to implement the following:
+
+1. When to look at just the vars in a model
+2. When to look at just the interaction between vars in a model
+3. When to look at both the vars and the interaction in a model
+
+I also want to work on interpreting estimates and other results from emmeans and emtrends. I think I get the idea, but more experience will instill confidence.
+
+### *Question 4:*
+
+**How much time did this take you, roughly? Again, I’m trying to keep track that these assignments aren’t killer, more than anything.**
+
+1.5 hours
+
+### *Question 5:*
+
+**Please give yourself a weak/sufficient/strong assessment on this assigment. Feel free to comment on why.**
+
+Sufficient/strong. I have some questions + areas for improvement, but think I grasp the concepts fairly well. I am getting good at writing models, checking assumptions, troubleshooting them, etc.
