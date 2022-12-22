@@ -1,0 +1,3434 @@
+---
+title: "Slid(er)ing Into Batter's DMs"
+subtitle: "How and Why Usage of the Slider Has Changed Across Major League Baseball"
+author: "Nathan Strozewski"
+date: 2022-12-22
+format:
+  html:
+    code-fold: true
+    code-tools: true
+    warning: false
+    error: false
+editor: visual
+---
+
+## A Brief History of Sabermetrics
+
+Major League Baseball (MLB) has pioneered the use of statistics and biometric data to inform both sport and business decisions. Popularized by the 2011 film [*Moneyball*](https://www.imdb.com/title/tt1210166/), a field of study called "sabermetrics" (after the [Society for American Baseball Research](https://sabr.org/)), has developed around this data analysis.
+
+The ability to track limited pitch data, such as location and speed, first became available in 2008 thanks to the installation of [PITCHf/x](https://www.trackman.com/baseball) systems in al 30 MLB stadiums. In 2015, [Statcast](https://www.mlb.com/glossary/statcast) systems were also installed that now enable nearly every ball and player movement to be tracked. For pitchers, advanced metrics such as ball spin rate and movement, as well as pitcher arm extension, angle, and release point are now available. On the batting side, batter swing plane and angle, and ball exit velocity, and launch angle are recorded. The sprint speed and acceleration, distance traveled, and route are tracked for all players simultaneously. And the trajectory of every ball in play is recorded.
+
+The availability of this advanced data enables team-driven statistical analysis to inform in-game strategies, scouting, player development, injury prevention and rehabilitation, player acquisitions, contract negotiations, and team business strategies such as ticket and concession sales, partnerships, and marketing. Much of Statcast data is made publicly at [Baseball Savant](https://baseballsavant.mlb.com/) - leading to growth of amateur sabermetric communities such as [Fangraphs Community Research](https://community.fangraphs.com/).
+
+## Scope of This Report
+
+I like baseball. And I like data. I'm particularly interested in how pitchers strategize against batters. Pitchers have an arsenal of different pitches that move in different directions and travel at different velocities.
+
+![](strasburg%20pitch%20overlay.mp4)
+
+Image credit: [DigitalOptics](https://gfycat.com/canineultimatecrustacean)
+
+Different pitches are often used in sequences to trick the hitter by disrupting their timing and balance. The goal is to cause the hitter to swing and miss or hit the ball weakly so that a fielder can make an easy play.
+
+![](bauer%20pitch%20overlay.mp4)
+
+Image credit: [DigitalOptics](https://gfycat.com/snarlinggenerousjapanesebeetle-trevor-bauer-baseball-indians-sports)
+
+Pitchers have quite the advantage in these match-ups. In fact, the rules [have been modified in the past](https://bosoxinjection.com/2013/12/13/pitching-mound-history/) to create more balance and the MLB is currently experimenting with [moving the pitcher's mound](https://www.bleachernation.com/cubs/2022/01/13/the-atlantic-league-is-all-done-with-mlbs-move-the-mound-back-rule-change/) farther back to give hitters more time to react to pitches. They're also (secretly) [testing different baseball compositions](https://www.foxnews.com/sports/study-shows-mlb-used-three-different-baseballs-in-2022-after-admitting-two-were-used-last-season) to influence how pitches move and how batted balls travel.
+
+There's a lot that goes into pitching strategy. How do pitches choose which pitch to throw? Anecdotally, I've noticed that the slider is being used more frequently than in the past. To verify this, I'll analyze usage of each pitch over time. Baseball is very analytically driven. Changes in pitch usage are likely intentional and driven by data that suggests certain pitches correlate with positive or negative pitch outcomes.
+
+After identifying changes in pitch usage, I will identify why these changes have occurred by comparing pitch outcomes across different pitch types. Then, I'll test various pitch factors such as velocity and movement to determine how these factors influence pitch outcome. Lastly, I'll fit a multivariate linear model to determine how precisely these factors contribute to pitch outcome and predict how a pitcher with a specific set of these pitch factors will fare against hitters.
+
+I hypothesize that usage of the slider has increased and that this increase stems from a higher likelihood of positive pitch outcomes, such as more whiffs and slower exit velocity, than other pitches. Furthermore, I expect that the two strongest predictors of slider pitch success will be pitch velocity and vertical movement.
+
+## Analysis of Pitch Usage Over Time
+
+All data used in the analyses of this report are obtained from [Baseball Savant's Statcast Search](https://baseballsavant.mlb.com/statcast_search). I filtered and downloaded all available pitch usage and outcome data by year, for each pitch. Since I am curious about pitch usage patterns on the largest scale, I considered all pitcher and batter handedness-es (i.e., righties and lefties for both) together. Only pitchers that at least 100 total pitches in a year were considered to minimize influence of small sample sizes stemming from minor-league call-ups and position-player pitches.
+
+```{r}
+#| label: libraries
+#| echo: false
+#| output: false
+
+library(dplyr)
+library(data.table)
+library(tidyr)
+library(tibble)
+library(ggplot2)
+library(ggpubr)
+library(performance)
+library(corrplot)
+library(ggforce)
+library(visreg)
+library(grid)
+```
+
+```{r}
+#| label: initial data aggregation
+#| output: false
+#| include: false
+
+# function to compile .csv files per pitch and organize
+pitch_usage_aggregate_function <- function(pitch_usage_files_path) {
+  
+pitch_usage_aggregate <- rbindlist(mapply(c,(list.files(path = pitch_usage_files_path,
+                                                        pattern = "*.csv",
+                                                        full.names = TRUE) %>%
+                                               lapply(read.table,
+                                                      header = TRUE,
+                                                      sep = ",",
+                                                      encoding = "UTF-8")),
+                                          (list.files(path = pitch_usage_files_path,
+                                                      pattern = "*.csv",
+                                                      full.names = TRUE) %>%
+                                             basename() %>%
+                                             as.list()),
+                                          SIMPLIFY = FALSE),
+                                   fill = T) %>% 
+  mutate(year = substr(V1, 1, 4)) %>% # pull year from col V1
+  mutate(pitch = substr(V1, 6, 9)) %>% # pull pitch abr from col V1
+  mutate(pitch = recode(pitch, Chan = 'Change', Cutt = 'Cutter', Curv =  'Curveball',
+                        Fast = 'Fastball', Sink = 'Sinker', Slid = 'Slider')) %>% 
+  select(-c(pos3_int_start_distance, pos4_int_start_distance,
+            pos5_int_start_distance, pos6_int_start_distance, 
+            pos7_int_start_distance, pos8_int_start_distance, 
+            pos9_int_start_distance, V1)) %>% # remove select cols
+  select(player_name, player_id, year:pitch, pitches:pitch_percent, spin_rate:velocity,
+         release_extension, effective_speed, eff_min_vel, ba:launch_angle,
+         whiffs:takes) # reorder cols
+  
+return(as.data.frame(pitch_usage_aggregate))
+}
+
+# set paths to pitch files
+changeup_usage_path <- "Data/Pitch Usage/Change"
+curveball_usage_path <- "Data/Pitch Usage/Curveball"
+cutter_usage_path <- "Data/Pitch Usage/Cutter"
+fastball_usage_path <- "Data/Pitch Usage/Fastball"
+sinker_usage_path <- "Data/Pitch Usage/Sinker"
+slider_usage_path <- "Data/Pitch Usage/Slider"
+
+# aggregate pitch files into dfs
+
+changeup_usage_aggregate <- pitch_usage_aggregate_function(changeup_usage_path)
+curveball_usage_aggregate <- pitch_usage_aggregate_function(curveball_usage_path)
+cutter_usage_aggregate <- pitch_usage_aggregate_function(cutter_usage_path)
+fastball_usage_aggregate <- pitch_usage_aggregate_function(fastball_usage_path)
+sinker_usage_aggregate <- pitch_usage_aggregate_function(sinker_usage_path)
+slider_usage_aggregate <- pitch_usage_aggregate_function(slider_usage_path)
+
+# list of all aggregate dfs
+master_pitch_usage_aggregate_list <- list(changeup_usage_aggregate = changeup_usage_aggregate,
+                                         curveball_usage_aggregate = curveball_usage_aggregate,
+                                         cutter_usage_aggregate = cutter_usage_aggregate,
+                                         fastball_usage_aggregate = fastball_usage_aggregate,
+                                         sinker_usage_aggregate = sinker_usage_aggregate,
+                                         slider_usage_aggregate = slider_usage_aggregate)
+
+# write aggregate dfs into .csv files
+mapply(write.csv, 
+       master_pitch_usage_aggregate_list, 
+       file=paste0(names(master_pitch_usage_aggregate_list),
+                   '.csv'))
+
+# combine aggregate dfs into one master df
+master_pitch_usage_aggregate <- rbind(changeup_usage_aggregate,
+                                      curveball_usage_aggregate,
+                                      cutter_usage_aggregate,
+                                      fastball_usage_aggregate,
+                                      sinker_usage_aggregate,
+                                      slider_usage_aggregate)
+
+# write master df to .csv file
+write.csv(master_pitch_usage_aggregate,
+          "Data/Pitch Usage/Aggregated Files/master_pitch_usage_aggregate.csv",
+          row.names = TRUE)
+```
+
+I then calculated means for each variable that are weighted by total pitch number, as the number of pitches thrown per pitcher per year varies substantially. Since more advanced metrics are only available following the installation of Statcast systems (~ 2015), I first conducted these calculations for all common metrics (2008-present) then separately conducted these calculations for Statcast metrics (2015-present).
+
+```{r}
+#| label: pitch usage stats
+#| output: false
+#| include: false
+
+# aggregate all pitch usage stats
+master_pitch_usage_summary <- master_pitch_usage_aggregate %>% 
+  group_by(year, pitch) %>% 
+  filter(total_pitches > 100) %>%
+  select(-c(player_name, total_pitches, pitch_percent, ba)) %>%
+  summarise(pitch_count = sum(pitches),
+            sum_whiffs = sum(whiffs),
+            sum_swings = sum(swings),
+            sum_takes = sum(takes),
+            sum_abs = sum(abs),
+            sum_hits = sum(hits),
+            mean_spin_rate = weighted.mean(spin_rate, pitches),
+            mean_velocity = weighted.mean(velocity, pitches),
+            mean_release_extension = weighted.mean(release_extension, pitches),
+            mean_effective_speed = weighted.mean(effective_speed, pitches),
+            mean_eff_min_vel = weighted.mean(eff_min_vel, pitches),
+            mean_iso = weighted.mean(iso, pitches),
+            mean_babip = weighted.mean(babip, pitches),
+            mean_slg = weighted.mean(slg, pitches),
+            mean_woba = weighted.mean(woba, pitches),
+            mean_xwoba = weighted.mean(xwoba, pitches),
+            mean_xba = weighted.mean(xba, pitches),
+            mean_launch_speed = weighted.mean(launch_speed, pitches),
+            mean_launch_angle = weighted.mean(launch_angle, pitches)) %>% 
+  mutate(ba = sum_hits / sum_abs,
+         swing_percentage = sum_swings / pitch_count,
+         whiff_percentage = sum_whiffs / sum_swings,
+         contact_rate = (sum_swings - sum_whiffs) / sum_swings,
+         take_percentage = sum_takes / pitch_count)
+
+# save and export
+write.csv(master_pitch_usage_summary,
+          "Data/Pitch Usage/Statistics/master_pitch_usage_summary.csv",
+          row.names = TRUE)
+
+# calculate total number of pitches per year
+total_pitches <- master_pitch_usage_aggregate %>% 
+  group_by(year, pitch) %>%
+  summarise(pitch_count = sum(pitches)) %>% 
+  ungroup() %>% 
+  group_by(year) %>% 
+  summarise(total_pitches = sum(pitch_count)) %>% 
+  slice(rep(1:n(), each = 6)) %>% # rep 6 times to fit future need (see pitch_percentages)
+  as.data.frame()
+
+# calculate pitch usage %s
+master_pitch_usage_percentages <- master_pitch_usage_aggregate %>% 
+  group_by(year, pitch) %>% 
+  filter(total_pitches > 100) %>%
+  summarise(pitch_count = sum(pitches)) %>% 
+  select(year, pitch, pitch_count) %>% 
+  ungroup() %>%
+  add_column(all_pitches = total_pitches$total_pitches) %>% 
+  mutate(pitch_usage = pitch_count/all_pitches)
+
+# write the .csv
+write.csv(master_pitch_usage_percentages,
+          "Data/Pitch Usage/Statistics/master_pitch_usage_percentages.csv",
+          row.names = TRUE)
+
+# calc statcast era statistics - for use in full analyses
+master_statcast_summary <- master_pitch_usage_aggregate %>% 
+  group_by(year, pitch) %>% 
+  filter(total_pitches > 100) %>%
+  select(-c(player_name, total_pitches, pitch_percent, ba)) %>% 
+  drop_na() %>% 
+  summarise(pitch_count = sum(pitches),
+            sum_whiffs = sum(whiffs),
+            sum_swings = sum(swings),
+            sum_takes = sum(takes),
+            sum_abs = sum(abs),
+            sum_hits = sum(hits),
+            mean_spin_rate = weighted.mean(spin_rate, pitches),
+            mean_velocity = weighted.mean(velocity, pitches),
+            mean_release_extension = weighted.mean(release_extension, pitches),
+            mean_effective_speed = weighted.mean(effective_speed, pitches),
+            mean_eff_min_vel = weighted.mean(eff_min_vel, pitches),
+            mean_iso = weighted.mean(iso, pitches),
+            mean_babip = weighted.mean(babip, pitches),
+            mean_slg = weighted.mean(slg, pitches),
+            mean_woba = weighted.mean(woba, pitches),
+            mean_xwoba = weighted.mean(xwoba, pitches),
+            mean_xba = weighted.mean(xba, pitches),
+            mean_launch_speed = weighted.mean(launch_speed, pitches),
+            mean_launch_angle = weighted.mean(launch_angle, pitches)) %>% 
+  mutate(ba = sum_hits / sum_abs,
+         swing_percentage = sum_swings / pitch_count,
+         whiff_percentage = sum_whiffs / sum_swings,
+         contact_rate = (sum_swings - sum_whiffs) / sum_swings,
+         take_percentage = sum_takes / pitch_count)
+
+# calc stats for all recorded data
+master_allyears_summary <- master_pitch_usage_aggregate %>% 
+  group_by(year, pitch) %>% 
+  filter(total_pitches > 100) %>%
+  select(-c(player_name, total_pitches, pitch_percent, ba,
+            spin_rate, release_extension, effective_speed, eff_min_vel,
+            xwoba, xba, launch_speed, launch_angle)) %>% 
+  drop_na() %>% 
+  summarise(pitch_count = sum(pitches),
+            sum_whiffs = sum(whiffs),
+            sum_swings = sum(swings),
+            sum_takes = sum(takes),
+            sum_abs = sum(abs),
+            sum_hits = sum(hits),
+            mean_velocity = weighted.mean(velocity, pitches),
+            mean_iso = weighted.mean(iso, pitches),
+            mean_babip = weighted.mean(babip, pitches),
+            mean_slg = weighted.mean(slg, pitches),
+            mean_woba = weighted.mean(woba, pitches)) %>% 
+  mutate(ba = sum_hits / sum_abs,
+         swing_percentage = sum_swings / pitch_count,
+         whiff_percentage = sum_whiffs / sum_swings,
+         contact_rate = (sum_swings - sum_whiffs) / sum_swings,
+         take_percentage = sum_takes / pitch_count)
+
+# write .csv
+write.csv(master_allyears_summary,
+          "Data/Pitch Usage/Statistics/master_allyears_summary.csv",
+          row.names = TRUE)
+```
+
+Next, I took the total number of times each pitch was thrown and divided it by the total number of thrown pitches to calculate pitch usage percentages. I did this for each year that basic pitch tracking data is available (2008-present).
+
+```{r}
+#| label: pitch usage over time
+#| figure-align: center
+#| fig-cap: "Figure 1: The percentage of total pitches throw for each pitch type was plotted over time. Availability of pitch usage data began in 2008 via PITCHf/x. All data was obtained via Baseball Savant"
+
+pitch_usage_plot <- ggplot(data = master_pitch_usage_percentages,
+                           mapping = aes(x = year,
+                                         y = pitch_usage,
+                                         group = pitch)) +
+  geom_point(aes(color = pitch)) +
+  geom_line(aes(color = pitch)) +
+  theme_minimal() +
+  theme(legend.title = element_text(hjust = 0.5, face = "bold"),
+        legend.box.background = element_rect(colour = "black"),
+        axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
+        plot.title = element_text(hjust = 0.5)) +
+  labs(x = "Season",
+       y = "Percentage of Pitches Thrown",
+       color = "Pitch")
+
+pitch_usage_plot
+```
+
+Usage of the fastball has varied a bit, relative to other pitches, over time. But its usage has decreased overall. Usage of the sinker has decreased substantially. Usage of the change up and curveball have increased marginally, while usage of the slider has visibly increased within the Statcast era (Figure 1).
+
+Usage of the slider has increased a lot. Interestingly, usage seems to have started to increase more around the availability of Statcast advanced metrics (~ 2015; Figure 1). Perhaps slider usage increased in response to Statcast data that indicated its effectiveness or ways to maximize its potential.
+
+```{r}
+#| label: pitch usage table
+#| figure-algin: center
+#| fig-cap: "Table 1: Changes in the percentage of total pitches for each pitch since the availability of Statcast data. All data was obtained via Baseball Savant."
+
+pitch_percentage_change_function <- function(start_year, end_year) {
+  
+  library(scales) # percentages
+  library(reactablefmtr) # pretty tables
+  
+  pitch_percentage_changes <- master_pitch_usage_percentages %>% 
+    filter(between(year, start_year, end_year)) %>% 
+    group_by(pitch) %>% 
+    mutate(usage_change = pitch_usage - pitch_usage[1]) %>% 
+    mutate(usage_change_percent = (pitch_usage / pitch_usage[1])-1) %>%
+    filter(year == end_year)
+  
+  pitch_percentage_changes_table <- pitch_percentage_changes %>% 
+    select(pitch, usage_change_percent) %>% 
+    rename("Pitch" = pitch,
+           'Percent Change' = usage_change_percent) %>% 
+    as.data.frame()
+
+  pitch_percentage_changes_table <- reactable(
+  pitch_percentage_changes_table,
+  pagination = FALSE,
+  defaultSorted = 'Percent Change',
+  defaultSortOrder = "asc",
+  columns = (list(Pitch = colDef(width = 100),
+                  'Percent Change' = colDef(width = 200,
+                                    align = "center"))),
+  defaultColDef = colDef(cell = data_bars(pitch_percentage_changes_table,
+                                          number_fmt = scales::percent,
+                                          max_value = 1,
+                                          text_position = "outside-end",
+                                          fill_color = c("red", "blue"))))
+  
+  return(pitch_percentage_changes_table)
+  
+}
+
+pitch_percentage_change_2015to2022 <- pitch_percentage_change_function(2015, 2022)
+
+pitch_percentage_change_2015to2022
+```
+
+In fact, slider usage has increased by 43% since Statcast data became available (Table 1). This is nearly double the next greatest increase, seen with cutters. However, cutters were and still comprise a much smaller percentage of total pitches. This is still an interesting secondary finding, as sliders and cutters have similar velocity and movement profiles.
+
+So sliders are being thrown a lot. How do hitters respond to them?
+
+```{r}
+#| label: statcast data refinement
+#| output: false
+#| include: false
+
+# trim down data to include only Statcast era and pitchers with < 100 pitches
+master_statcast_aggregate <- master_pitch_usage_aggregate %>% 
+  filter(year > 2014,
+         total_pitches > 99) %>% 
+  mutate(whiff_percentage = whiffs / swings)
+```
+
+```{r}
+#| label: swings and contact plot
+#| figure-align: center
+#| fig-cap: "Figure 2: The percentage of swings per total pitches throw for each pitch type and the percentage of swings that resulted in contact were plotted over time. Availability of pitch usage data began in 2008 via PITCHf/x. All data was obtained via Baseball Savant."
+
+swing_plot <- ggplot(data = master_allyears_summary,
+                     mapping = aes(x = year,
+                                   y = swing_percentage,
+                                   group = pitch)) +
+  geom_line(aes(color = pitch)) +
+  geom_point(aes(color = pitch)) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1, size = 8),
+        legend.box.background = element_rect(colour = "black")) +
+  labs(title = "Swing Rate by Pitch",
+       y = "Swing Rate",
+       x = "Season",
+       color = "Pitch")
+
+contact_plot <- ggplot(data = master_allyears_summary,
+                       mapping = aes(x = year,
+                                     y = contact_rate,
+                                     group = pitch)) +
+  geom_line(aes(color = pitch)) +
+  geom_point(aes(color = pitch)) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1, size = 8),
+        legend.box.background = element_rect(colour = "black")) +
+  labs(title = "Contact Rate by Pitch",
+       y = "Contact Rate",
+       x = "Season",
+       color = "Pitch")
+
+swing_contact_plot <- ggarrange(swing_plot,
+                                contact_plot,
+                                ncol = 2,
+                                nrow = 1,
+                                common.legend = TRUE,
+                                legend = "right")
+
+swing_contact_plot
+```
+
+Sliders are one of the pitches that batters swing most often at, with hitters swinging at only change ups and cutters more often. However, hitters make contact less often on sliders than any other pitch (Figure 2). From a pitcher strategy position, the best outcome is for a hitter to whiff when they swing. Perhaps sliders provide a way to maximize whiffs, as hitters swing at them more often than most pitches and make contact less often than any other pitch.
+
+There are a lot of interesting follow-up analyses that can stem from these swing and contact rate results. Foremost, sinker contact rate is quite high relative to other pitches (Figure 2). In a vacuum, contact is a negative pitcher outcome because it creates an opportunity for the hitter to reach base and potentially score a run. So, in that same vacuum, the sinker is likely not a good pitch because it leads to more opportunities for hitters to reach base. Unless the contact against sinkers sucks. The sinker has historically been used to induce ground balls, which can lead to easy players for infielders to produce single outs and double plays. A future analysis could look at the association between sinkers and hitter launch angle, as well as the pitch factors that decrease launch angle to produce ground balls.
+
+Change ups are also thrown often and result in low contact rates (Figure 2). An analysis similar to the one I have planned for the slider could be quite interesting for this pitch as well.
+
+Furthermore, there has been a general downtrend in contact rate across all pitches with time (Figure 2). This aligns well with the narrative that baseball has shifted towards an offensive approach model of [Three True Outcomes](https://www.mlb.com/glossary/idioms/three-true-outcomes), which focuses on increasing [bat speed and launch angle](https://www.washingtonpost.com/graphics/sports/mlb-launch-angles-story/) to maximize extra-base hit potential.
+
+OK. Back to the slider. So hitters are swing at sliders a lot *and* whiffing against them more often than any other pitch. But what happens when hitters do make contact? If that contact is good, resulting in more hits, the benefit of inducing whiffs might be lost. First, I'll look at batting average profiles against different pitches. Batting average is a statistic that quantifies the number of hits per at bat. The league batting average in 2022 was 0.243, and a career 0.300 batting average is considered nearly Hall of Fame-worthy. Next, I'll look at expected batting average, which is calculated by assessing the batted ball profile (exit velocity, launch angle, trajectory, landing location), comparing it to every other recorded batting ball profile and the outcome (a base hit or an out), and determines the statistical likelihood that the batted ball will result in a base hit. Lastly, I'll look at batting average on balls in play (BABIP). The difference between batting average and BABIP is the removal of strikeouts and home runs in the latter.
+
+Note: these analyses are trimmed down to Statcast-era data, as this contains the most advanced metrics.
+
+```{r}
+#| label: batting average plot
+#| figure-align: center
+#| fig-cap: "Figure 3: Batting average, expected batting average, and batting average on balls in play (BABIP) were plotted over time. Batting average was calculated by dividing the number of hits against each pitch by the number of at bats. Expected batting average and BABIP were calculated as the mean across all pitchers weighted by the number of pitches thrown per pitch type. All available data was obtained via Baseball Savant and included."
+
+ba_plot <- ggplot(data = master_statcast_summary,
+                  mapping = aes(x = year,
+                                y = ba,
+                                group = pitch)) +
+  geom_line(aes(color = pitch)) +
+  geom_point(aes(color = pitch)) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
+        legend.box.background = element_rect(colour = "black")) +
+  labs(y = "Batting Average",
+       x = "Season",
+       color = "Pitch")
+
+xba_plot <- ggplot(data = master_statcast_summary,
+                  mapping = aes(x = year,
+                                y = mean_xba,
+                                group = pitch)) +
+  geom_line(aes(color = pitch)) +
+  geom_point(aes(color = pitch)) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
+        legend.box.background = element_rect(colour = "black")) +
+  labs(y = "Expected Batting Average",
+       x = "Season",
+       color = "Pitch")
+
+babip_plot <- ggplot(data = master_statcast_summary,
+                     mapping = aes(x = year,
+                                   y = mean_babip,
+                                   group = pitch)) +
+  geom_line(aes(color = pitch)) +
+  geom_point(aes(color = pitch)) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45),
+        legend.box.background = element_rect(colour = "black")) +
+  labs(y = "BABIP",
+       x = "Season",
+       color = "Pitch")
+
+batting_averages_plot <- ggarrange(ba_plot,
+                                   xba_plot,
+                                   babip_plot,
+                                   ncol = 3,
+                                   nrow = 1,
+                                   common.legend = TRUE,
+                                   legend = "right")
+
+batting_averages_plot
+```
+
+When hitters do make contact, they produce a lower batting average against sliders than all other pitches. The same goes for expected batting average. Furthermore, the only pitch that yields a lower BABIP than the slider is the change up (Figure 3).
+
+What if the contact that hitters do make against sliders is really good? What if that contact leads to more extra-base hits, such as doubles, triples, and home runs, compared to other pitches? I can assess this by looking at the slugging percentage and exit velocity against each pitch. Slugging percentage is a quantification of the number of total bases per at bat. For example, if a hitter has five at bats and produces one single, their slugging percentage is calculated as: one single = one total base; one total base / five at bats = 0.200 slugging percentage. Higher slugging percentages therefore indicate that hitters produce more total bases per at bat. I can also employ the measurements of the batted ball's exit velocity here. Exit velocity is measured in miles per hour and is a raw measurement of how hard a hitter hits the pitch. Hard hits are harder to field, take less time to land and therefore reduce the likelihood of being caught for an out, and are highly correlated with extra base hits.
+
+```{r}
+#| label: power plot
+#| figure-align: center
+#| fig-cap: "Figure 4: Slugging and exit velocity were calculated as the mean across all pitches weighted by the number of pitches thrown per pitch type. All available data was obtained via Baseball Savant and included."
+
+slg_plot <- ggplot(data = master_statcast_summary,
+                     mapping = aes(x = year,
+                                   y = mean_slg,
+                                   group = pitch)) +
+  geom_point(aes(color = pitch)) +
+  geom_line(aes(color = pitch)) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
+        legend.box.background = element_rect(colour = "black"),
+        legend.title = element_text(hjust = 0.5, face = "bold")) +
+  labs(title = "Slg. Percentage by Pitch",
+       x = "Season",
+       y = "Slugging Percentage",
+       color = "Pitch")
+
+exit_velo_plot <- ggplot(data = master_statcast_summary,
+                         mapping = aes(x = year,
+                                       group = pitch,
+                                       y = mean_launch_speed)) +
+  geom_line(aes(color = pitch)) +
+  geom_point(aes(color = pitch)) +
+  theme_minimal() +
+  theme(legend.box.background = element_rect(colour = "black"),
+        legend.title = element_text(hjust = 0.5, face = "bold"),
+        axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  labs(title = "Exit Velo. By Pitch",
+       x = "Season",
+       y = "Exit Velocity (mph)",
+       color = "Pitch")
+
+slg_exitvelo_plot <- ggarrange(slg_plot,
+                               exit_velo_plot,
+                               ncol = 2,
+                               nrow = 1,
+                               common.legend = TRUE,
+                               legend = "right") 
+slg_exitvelo_plot
+```
+
+Surprise! Sliders yield the lowest slugging percentage of any pitch and the second lowest exit velocity. Only the change up yields a lower exit velocity than sliders (Figure 4).
+
+## Predictors of Pitch Outcome
+
+So sliders are pretty dominant. The propensity for sliders to induce swings and misses (i.e., "whiffs") is particularly interesting, as inducing a whiff (almost) entirely negates the possibility that a hitter can reach base. What makes sliders so effective at inducing whiffs? Publicly available pitch factor data includes velocity, spin rate, release extension, different types of movement, and location relative to the strike zone. I'll look at all of these.
+
+I'll start by looking at the influence of slider velocity on whiff likelihood. Increased velocity decreases the amount of time the hitter has to identify the pitch that is thrown, decide whether or not it will be in the strike zone, determine whether to swing, and execute the swing. For example, a slider thrown 80 mph travels 117.3 feet per second (fps), while a slider thrown 90 mph travels 132 fps. The distance between the pitcher's mound and home plate is 60.5 feet, so a hitter has 0.516 seconds to react to an 80 mph pitch and only 0.458 seconds to react to a 90 mph pitch. Thus, I hypothesize that a greater velocity will be associated with more whiffs.
+
+The hitter's reaction window can also be influenced by the pitcher's release extension, or the distance from the pitcher's mound that the pitcher releases the ball, by reducing the total distance that the pitch has to travel. For example, a release extension of 5 feet reduces the pitch travel distance from 60.5 feet to 55.5 feet. Thus, 90 mph pitch with 0 feet of release extension  will travel to home plate in 0.458 seconds, but a 90 mph pitch with 5 feet of release extension will travel to home plate in 0.42 seconds. Based on this, I hypothesize that release extension will be positively correlated with whiff likelihood.
+
+Spin rate might influence the hitter's ability to determine which pitch is being thrown. For example, faster spin rates may prevent the hitter from detecting the rotation of the spin rotation, which is indicative of how the pitch will move. Preventing the hitter from appropriately predicting pitch movement may increase likelihood of whiffs. Therefore, I hypothesize that spin rate will be positively correlated with whiff percentage.
+
+::: {.panel-tabset}
+
+## Figure 5: Velocity
+
+```{r}
+#| label: velocity vs. whiffs plot
+#| figure-align: center
+#| fig-cap: "Figure 5: The percentage of swings resulting in a whiff was plotted by velocity per pitch type. Velocity was calculated as the mean across all pitchers weighted by the total pitches thrown per pitch type. All available data was obtained via Baseball Savant and included."
+
+velocity_whiffs_plot <- ggplot(data = master_statcast_aggregate,
+                               mapping = aes(x = velocity,
+                                             y = whiff_percentage)) +
+  geom_point(aes(color = pitch)) +
+  geom_smooth(method = "lm",
+              se = FALSE,
+              fullrange = TRUE,
+              color = "black") +
+  theme_minimal() +
+  theme(legend.box.background = element_rect(colour = "black"),
+        legend.title = element_text(hjust = 0.5, face = "bold"),
+        axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  facet_wrap(vars(pitch)) +
+  labs(x = "Velocity (mph)",
+       y = "Whiffs (%)",
+       color = "Pitch")
+
+velocity_whiffs_plot
+```
+
+## Figure 6: Release Extension
+
+```{r}
+#| label: release extension vs. whiffs plot
+#| figure-align: center
+#| fig-cap: "Figure 6: The percentage of swings resulting in a whiff was plotted by release extension per pitch type. Release extension was calculated as the mean across all pitchers weighted by the total pitches thrown per pitch type. All available data was obtained via Baseball Savant and included."
+
+release_whiffs_plot <- ggplot(data = master_statcast_aggregate,
+                              mapping = aes(x = release_extension,
+                                            y = whiff_percentage)) +
+  geom_point(aes(color = pitch)) +
+  geom_smooth(method = "lm",
+              se = FALSE,
+              fullrange = TRUE,
+              color = "black") +
+  theme_minimal() +
+  theme(legend.box.background = element_rect(colour = "black"),
+        legend.title = element_text(hjust = 0.5, face = "bold"),
+        axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  facet_wrap(vars(pitch)) +
+  labs(x = "Release Extension (ft)",
+       y = "Whiffs (%)",
+       color = "Pitch")
+
+release_whiffs_plot
+```
+
+## Figure 7: Spin Rate
+
+```{r}
+#| label: spin rate vs. whiffs plot
+#| figure-align: center
+#| fig-cap: "Figure 7: The percentage of swings resulting in a whiff was plotted by spin rate per pitch type. Spin rate was calculated as the mean across all pitchers weighted by the total pitches thrown per pitch type. All available data was obtained via Baseball Savant and included."
+
+spin_whiffs_plot <- ggplot(data = master_statcast_aggregate,
+                           mapping = aes(x = spin_rate,
+                                         y = whiff_percentage)) +
+  geom_point(aes(color = pitch)) +
+  geom_smooth(method = "lm",
+              se = FALSE,
+              fullrange = TRUE,
+              color = "black") +
+  theme_minimal() +
+  theme(legend.box.background = element_rect(colour = "black"),
+        legend.title = element_text(hjust = 0.5, face = "bold"),
+        axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  facet_wrap(vars(pitch)) +
+  labs(x = "Spin Rate (rpm)",
+       y = "Whiffs (%)",
+       color = "Pitch")
+
+spin_whiffs_plot
+```
+
+:::
+
+It does appear that velocity and whiff likelihood (percentage of swings that result in a whiff) are positively correlated for all pitches, except the change up. This correlation is less pronounced for the slider than other pitches, such as the fastball and curveball (Figure 5). Release extension also correlates positively with whiff percentage across all pitches, though this is a somewhat marginal relationship for the slider (Figure 6). Lastly, spin rate also correlates to increases in whiff percent for all pitches (Figure 7), and the correlation appears to be greater here for sliders than that with velocity or release extension (Figures 5-6).
+
+Next I will look at pitch movement data. Movement data was obtained through [Baseball Savant's Pitch Movement Leaderboard](https://baseballsavant.mlb.com/leaderboard/pitch-movement?year=2022&team=&min=q&pitch_type=ALL&hand=&x=diff_x_hidden&z=diff_z_hidden) and was filtered by slider and downloaded by year. Again, all pitcher and batter handedness-es were grouped together and only pichers that threw at least 100 pitches in a year were included. The available movement data is not differentiated by pitch location, limiting the accuracy of interaction analyses between the two variables.
+
+```{r}
+#| label: slider movement data aggregation
+#| output: false
+#| include: false
+
+pitch_move_aggregate_function <- function(pitch_move_files_path) {
+  
+pitch_move_aggregate <- rbindlist(mapply(c,(list.files(path = pitch_move_files_path,
+                                                       pattern = "*.csv",
+                                                       full.names = TRUE) %>%
+                                              lapply(read.table,
+                                                     header = TRUE,
+                                                     sep = ",",
+                                                     encoding = "UTF-8")),
+                                         (list.files(path = pitch_move_files_path,
+                                                     pattern = "*.csv",
+                                                     full.names = TRUE) %>%
+                                            basename() %>%
+                                            as.list()),
+                                         SIMPLIFY = FALSE),
+                                  fill = T) %>%
+  mutate(pitch = recode(pitch_type_name, Changeup = 'Change', '4-Seamer' = "Fastball")) %>%
+  mutate(player_id = pitcher_id,
+         horizontal_break = pitcher_break_x,
+         vertical_break = pitcher_break_z) %>% 
+  select(-V1) %>% # remove select cols
+  select(year, player_id, last_name, first_name, pitch_hand, 
+         total_pitches, pitch, pitches_thrown,
+         avg_speed, rise, tail, horizontal_break, vertical_break) # reorder cols
+
+return(as.data.frame(pitch_move_aggregate))
+}
+
+# set paths to pitch files
+all_move_path <- "Data/Movement/All Pitches"
+
+# aggregate movement files into dfs
+
+all_move_aggregate <- pitch_move_aggregate_function(all_move_path)
+
+# write master df to .csv file
+write.csv(all_move_aggregate,
+          "Data/Movement/All Pitches/master_pitch_movement_aggregate.csv",
+          row.names = TRUE)
+
+# Now merge movement data with other Statcast data
+
+# format movement data
+all_move_aggregate <- all_move_aggregate %>% 
+  group_by(player_id, year, pitch) %>% 
+  mutate(year = as.character(year))
+
+# format statcast data and merge with movement data
+statcast_move_aggregate <- master_statcast_aggregate %>% 
+  group_by(player_id, year, pitch) %>% 
+  inner_join(all_move_aggregate,
+             by = c('player_id' = 'player_id',
+                    'year' = 'year',
+                    'pitch' = 'pitch')) %>% 
+  select(-c(last_name, first_name, total_pitches.y, pitches_thrown, avg_speed)) %>% 
+  rename(total_pitches = total_pitches.x) %>% 
+  select(player_id, player_name, pitch_hand, year:whiff_percentage, rise:vertical_break)
+
+# write .csv file
+write.csv(statcast_move_aggregate,
+          "Data/Key Aggregates/Statcast and Movement Data.csv",
+          row.names = TRUE)
+```
+
+Available pitch movement data includes horizontal movement (left to right or right to left), vertical movement downward, rising movement upward (prior to vertical movement downward), and tailing movement (movement opposite to horizontal movement, usually small in scale and after horizontal movement has ended). Sliders typically rise, then move both horizontally and vertically with minimal tail. I hypothesize that horizontal and vertical movement are positively correlated with whiff likelihood because they may force the ball to move away from the hitter's swing plane. Furthermore, I hypothesize that rise and tail are negatively correlated to whiff likelihood they may force the ball into a plane that aligns with a hitter's intentional or accidental swing path.
+
+::: {.panel-tabset}
+
+## Figure 8: Horizontal Break
+
+```{r}
+#| label: horizontal break vs. whiffs plot
+#| figure-align: center
+#| fig-cap: "Figure 8: The percentage of swings resulting in a whiff was plotted by horizontal movement per pitch type. Horizontal movement was calculated as the mean across all pitchers weighted by the total pitches thrown per pitch type. All available data was obtained via Baseball Savant and included."
+
+horbreaks_whiffs_plot <- ggplot(data = statcast_move_aggregate,
+                                mapping = aes(x = horizontal_break,
+                                              y = whiff_percentage)) +
+  geom_point(aes(color = pitch)) +
+  geom_smooth(method = "lm",
+              se = FALSE,
+              fullrange = TRUE,
+              color = "black") +
+  theme_minimal() +
+  theme(legend.box.background = element_rect(colour = "black"),
+        legend.title = element_text(hjust = 0.5, face = "bold"),
+        axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  facet_wrap(vars(pitch)) +
+  labs(x = "Horizontal Break (in)",
+       y = "Whiffs (%)",
+       color = "Pitch")
+
+horbreaks_whiffs_plot
+```
+
+## Figure 9: Vertical Break
+
+```{r}
+#| label: vertical break vs. whiffs plot
+#| figure-align: center
+#| fig-cap: "Figure 9: The percentage of swings resulting in a whiff was plotted by vertical break per pitch type. Vertical break was calculated as the mean across all pitchers weighted by the total pitches thrown per pitch type. All available data was obtained via Baseball Savant and included."
+
+verbreaks_whiffs_plot <- ggplot(data = statcast_move_aggregate,
+                                mapping = aes(x = vertical_break,
+                                              y = whiff_percentage)) +
+  geom_point(aes(color = pitch)) +
+  geom_smooth(method = "lm",
+              se = FALSE,
+              fullrange = TRUE,
+              color = "black") +
+  theme_minimal() +
+  theme(legend.box.background = element_rect(colour = "black"),
+        legend.title = element_text(hjust = 0.5, face = "bold"),
+        axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  facet_wrap(vars(pitch)) +
+  labs(x = "Vertical Break (in)",
+       y = "Whiffs (%)",
+       color = "Pitch")
+
+verbreaks_whiffs_plot
+```
+
+## Figure 10: Rise
+
+```{r}
+#| label: rise break vs. whiffs plot
+#| figure-align: center
+#| fig-cap: "Figure 10: The percentage of swings resulting in a whiff was plotted by rising movement per pitch type. Rise was calculated as the mean across all pitchers weighted by the total pitches thrown per pitch type. All available data was obtained via Baseball Savant and included."
+
+rise_whiffs_plot <- ggplot(data = statcast_move_aggregate,
+                           mapping = aes(x = rise,
+                                         y = whiff_percentage)) +
+  geom_point(aes(color = pitch)) +
+  geom_smooth(method = "lm",
+              se = FALSE,
+              fullrange = TRUE,
+              color = "black") +
+  theme_minimal() +
+  theme(legend.box.background = element_rect(colour = "black"),
+        legend.title = element_text(hjust = 0.5, face = "bold"),
+        axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  facet_wrap(vars(pitch)) +
+  labs(x = "Rise (in)",
+       y = "Whiffs (%)",
+       color = "Pitch")
+
+rise_whiffs_plot
+```
+
+## Figure 11: Tail
+
+```{r}
+#| label: tail break vs. whiffs plot
+#| figure-align: center
+#| fig-cap: "Figure 11: The percentage of swings resulting in a whiff was plotted by tailing movement per pitch type. Tail was calculated as the mean across all pitchers weighted by the total pitches thrown per pitch type. All available data was obtained via Baseball Savant and included."
+
+tail_whiffs_plot <- ggplot(data = statcast_move_aggregate,
+                           mapping = aes(x = tail,
+                                         y = whiff_percentage)) +
+  geom_point(aes(color = pitch)) +
+  geom_smooth(method = "lm",
+              se = FALSE,
+              fullrange = TRUE,
+              color = "black") +
+  theme_minimal() +
+  theme(legend.box.background = element_rect(colour = "black"),
+        legend.title = element_text(hjust = 0.5, face = "bold"),
+        axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  xlim(-250, 250) +
+  facet_wrap(vars(pitch)) +
+  labs(x = "Tail (in)",
+       y = "Whiffs (%)",
+       color = "Pitch")
+
+tail_whiffs_plot
+```
+
+:::
+
+Horizontal movement is positively correlated to whiff percentage for sliders, though this correlation is marginal. This is also the case for change ups, curveballs, and fastballs. Horizontal movement has a strong positive correlation with whiff likelihood for cutters and a negative correlation for sinkers (Figure 8). Vertical break has a stronger positively correlation with slider whiff likelihood than horizontal break. It is also positively correlated with whiff likelihood for change ups and cutters, but isnegatively correlated with whiff likelihood for curveballs, fastballs, and sinkers (Figure 9). Rise also has a clear positive correlation with whiff likelihood for sliders, as well as change ups. However, it is negatively correlated to whiff likelihood for curveballs, cutters, and sinkers (Figure 10). Lastly, tailing movement is positively correlated to whiff likelihood for all pitches, except the sinker.
+
+The last variable I will consider is pitch location relative to the strike zone. To obtain location data from [Baseball Savant's Statcast Search](https://baseballsavant.mlb.com/statcast_search), I filtered and downloaded available pitch usage and outcome data by zone per year, for each pitch. Zones covered 13 regions: the top left, top center, top right, middle left, middle center, middle right, bottom left, bottom center, and bottom right nonants inside of the strike zone; top left, top right, bottom left, and bottom right quadrants outside of the strike zone. 
+
+```{r}
+#| label: slider location data aggregation
+#| output: false
+#| include: false
+
+slider_location_aggregate_function <- function(slider_location_files_path) {
+
+slider_location_aggregate <- rbindlist(mapply(c,(list.files(path = slider_location_files_path,
+                                                            pattern = "*.csv",
+                                                            full.names = TRUE) %>%
+                                                   lapply(read.table,
+                                                          header = TRUE,
+                                                          sep = ",",
+                                                          encoding = "UTF-8")),
+                                              (list.files(path = slider_location_files_path,
+                                                          pattern = "*.csv",
+                                                          full.names = TRUE) %>%
+                                                 basename() %>%
+                                                 as.list()),
+                                              SIMPLIFY = FALSE),
+                                       fill = T) %>%
+  mutate(year = substr(V1, 1, 4)) %>% # pull year from col V1
+  mutate(pitch = substr(V1, 14, 19)) %>% # pull pitch abr from col V1
+  mutate(zone = substr(V1, 11, 12)) %>% # pull zone from col V1
+  select(-c(pos3_int_start_distance, pos4_int_start_distance,
+            pos5_int_start_distance, pos6_int_start_distance,
+            pos7_int_start_distance, pos8_int_start_distance,
+            pos9_int_start_distance, V1)) %>% # remove select cols
+  select(player_name, player_id, year:pitch, zone, pitches:pitch_percent, spin_rate:velocity,
+         release_extension, effective_speed, eff_min_vel, ba:launch_angle,
+         whiffs:takes) # reorder cols
+return(as.data.frame(slider_location_aggregate))
+}
+
+# set paths to pitch files
+slider_location_all_path <- "Data/Location/Slider/All"
+
+# aggregate movement files into dfs
+slider_location_all_aggregate <- slider_location_aggregate_function(slider_location_all_path)
+
+# write master df to .csv file
+write.csv(slider_location_all_aggregate,
+          "Data/Location/Slider/All/Aggregate Files/master_slider_location_all_aggregate.csv",
+          row.names = TRUE)
+```
+
+```{r}
+#| label: slider location vs. whiffs plot
+#| figure-align: center
+#| fig-cap: "Figure 12: The percentage of swings resulting in a whiff was plotted by strike zone location per pitch type. Location was divided into nonants inside the zone and quadrants outside the zone. All available data was obtained via Baseball Savant and included."
+
+slider_location_all_aggregate <- slider_location_all_aggregate %>%
+  mutate(whiff_percentage = whiffs / swings) %>% 
+  mutate(zone = recode(zone, 
+                       '01' = 'Top Left', '02' = 'Top Center', '03' = 'Top Right',
+                       '04' = 'Middle Left', '05' = 'Middle Center', '06' = 'Middle Right',
+                       '07' = 'Bottom Left', '08' = 'Bottom Center', '09' = 'Bottom Right',
+                       '10' = 'Outside Top Left', '12' = 'Outside Top Right',
+                       '13' = 'Outside Bottom Left', '14' = 'Outside Bottom Right'))
+
+slider_zone_plot <- ggplot(data = slider_location_all_aggregate,
+                           mapping = aes(x = factor(zone,
+                                                    level = c("Outside Top Left", 
+                                                              "Outside Top Right",
+                                                              "Top Left",
+                                                              "Top Center",
+                                                              "Top Right",
+                                                              "Middle Left",
+                                                              "Middle Center",
+                                                              "Middle Right",
+                                                              "Bottom Left",
+                                                              "Bottom Center",
+                                                              "Bottom Right",
+                                                              "Outside Bottom Left",
+                                                              "Outside Bottom Right")),
+                                         y = whiff_percentage)) +
+  geom_point(alpha = 0.1) +
+  geom_jitter(alpha = 0.1) +
+  stat_summary(geom = "point",fun.y = "mean",
+               col = "red", fill = "red",
+               size = 5, shape = 19, alpha = 1) +
+  stat_summary(fun.data = mean_se, geom = "errorbar",
+               col = "red", fill = "red", alpha = 1) +
+  theme_minimal() +
+  theme(legend.box.background = element_rect(colour = "black"),
+        legend.title = element_text(hjust = 0.5, face = "bold"),
+        axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  labs(x = "Location in Strike Zone",
+       y = "Whiffs (%)",
+       color = "Zone")
+
+slider_zone_plot
+```
+
+Throwing a slider in the middle of strike zone leads to fewer whiffs. No surprises here. Whiff likelihood is higher as you throw pitches either high or low in the zone. However, whiff likelihood is highest when you throw a pitch outside of the zone, particularly below the zone and to the right (Figure 12).
+
+```{r}
+#| label: slider summary vs. whiffs plot
+#| figure-align: center
+#| fig-cap: "Figure 13: Figures 5-11 were filtered by sliders and aggregated into one figure."
+
+statcast_slider_move_df <- statcast_move_aggregate %>% 
+  filter(pitch == "Slider")
+
+slider_velo_plot <- ggplot(data = statcast_slider_move_df,
+                               mapping = aes(x = velocity,
+                                             y = whiff_percentage)) +
+  geom_point(color = "magenta") +
+  geom_smooth(method = "lm",
+              se = FALSE,
+              fullrange = TRUE,
+              color = "black") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  labs(x = "Velocity (mph)",
+       y = "Whiffs (%)")
+
+slider_spin_plot <- ggplot(data = statcast_slider_move_df,
+                               mapping = aes(x = spin_rate,
+                                             y = whiff_percentage)) +
+  geom_point(color = "magenta") +
+  geom_smooth(method = "lm",
+              se = FALSE,
+              fullrange = TRUE,
+              color = "black") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  labs(x = "Spin Rate (rpm)",
+       y = "Whiffs (%)")
+
+slider_release_plot <- ggplot(data = statcast_slider_move_df,
+                              mapping = aes(x = release_extension,
+                                            y = whiff_percentage)) +
+  geom_point(color = "magenta") +
+  geom_smooth(method = "lm",
+              se = FALSE,
+              fullrange = TRUE,
+              color = "black") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  labs(x = "Release Extension (ft)",
+       y = "Whiffs (%)")
+
+slider_horizontal_plot <- ggplot(data = statcast_slider_move_df,
+                                 mapping = aes(x = horizontal_break,
+                                               y = whiff_percentage)) +
+  geom_point(color = "magenta") +
+  geom_smooth(method = "lm",
+              se = FALSE,
+              fullrange = TRUE,
+              color = "black") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  labs(x = "Horizontal Break (in)",
+       y = "Whiffs (%)")
+
+slider_vertical_plot <- ggplot(data = statcast_slider_move_df,
+                               mapping = aes(x = vertical_break,
+                                             y = whiff_percentage)) +
+  geom_point(color = "magenta") +
+  geom_smooth(method = "lm",
+              se = FALSE,
+              fullrange = TRUE,
+              color = "black") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  labs(x = "Vertical Break (in)",
+       y = "Whiffs (%)")
+
+slider_tail_plot <- ggplot(data = statcast_slider_move_df,
+                           mapping = aes(x = tail,
+                                         y = whiff_percentage)) +
+  geom_point(color = "magenta") +
+  geom_smooth(method = "lm",
+              se = FALSE,
+              fullrange = TRUE,
+              color = "black") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  labs(x = "Tail (in)",
+       y = "Whiffs (%)")
+
+slider_rise_plot <- ggplot(data = statcast_slider_move_df,
+                           mapping = aes(x = rise,
+                                         y = whiff_percentage)) +
+  geom_point(color = "magenta") +
+  geom_smooth(method = "lm",
+              se = FALSE,
+              fullrange = TRUE,
+              color = "black") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  labs(x = "Rise (in)",
+       y = "Whiffs (%)")
+
+slider_factor_plot <- ggarrange(slider_velo_plot, slider_spin_plot, slider_release_plot,
+                                slider_horizontal_plot, slider_vertical_plot,
+                                slider_rise_plot, slider_tail_plot,
+                                ncol = 3,
+                                nrow = 3)
+
+slider_factor_plot
+```
+
+In summation, all of the considered pitch factors were positively correlated with whiff likelihood for sliders. I expected that velocity and horizontal and vertical movement would have the strongest associations with whiff likelihood. However, velocity, spin rate, and rising movement exhibited the strongest positive associations (Figure 13).
+
+## Modeling the Predictors of Whiff Likelihood
+
+Now that I have determined which variables might influence whiff likelihood against sliders, I am going to construct a multivariate linear model to analyze and predict how each of these factors contributes to whiff likelihood. There is quite a bit of variabiliy in the number of sliders each pitcher has thrown, especially when the data is split by pitch location relative to the strike zone. To avoid potential bias, I will filter out all samples with fewer than 10 sliders thrown per zone.
+
+```{r}
+#| label: model data aggregation
+#| output: false
+#| include: false
+
+# aggregate all statcast statistics, movement data, and location data
+# keep only the entries that have ALL of this data
+# filter out samples with fewer than 10 swings per zone to avoid small sample size influences
+
+slider_move_aggregate <- all_move_aggregate %>% 
+  filter(pitch == 'Slider') %>% # keep only slider
+  group_by(player_id, year)
+
+slider_move_location_stats_aggregate <- slider_location_all_aggregate %>% 
+  group_by(player_id, year, zone) %>% 
+  inner_join(slider_move_aggregate,
+             by = c('player_id' = 'player_id',
+                    'year' = 'year',
+                    'pitch' = 'pitch')) %>% 
+  select(-c(last_name, first_name, 
+            total_pitches.y, pitches_thrown, avg_speed)) %>% 
+  rename(total_pitches = total_pitches.x) %>% 
+  select(player_id, player_name, pitch_hand, pitch, year, zone,
+         total_pitches, rise:vertical_break, spin_rate:whiff_percentage) %>% 
+  filter(swings > 9) %>% # remove tiny sample sizes
+  mutate(rise = as.numeric(rise),
+         tail = as.numeric(tail),
+         spin_rate = as.numeric(spin_rate))
+
+slider_move_location_stats_select <- slider_move_location_stats_aggregate %>% 
+  select(velocity, spin_rate, release_extension, horizontal_break, vertical_break,
+         rise, tail, zone, whiffs, swings) %>% 
+  drop_na()
+```
+
+I need to consider several factors when constructing this model. First, whiffs are a counting statistic, so a Poisson distribution parameter is needed (and the canonical link of the Poisson distribution is logarithmic). There is also a mixture of predictor variable classes (e.g., 'whiffs' is an integer, movement statistics are numeric, and location is a 'character), so a generalized linear model is needed. Lastly, the sample size of swings against the slider varies substantially across players and strike zone locations. To compensate for this, I will apply an offset scale to the log of swings (e.g., r/offset(), log(swings)).
+
+```{r}
+#| label: model
+#| output: false
+#| echo: true
+
+slider_whiff_glm <- glm(whiffs ~ velocity + spin_rate + 
+                        release_extension + horizontal_break + vertical_break 
+                        + rise + tail + zone + offset(log(swings)),
+                        family = poisson(link = "log"),
+                        data = slider_move_location_stats_select)
+```
+
+As this is an initial analysis, I will not explore interaction effects (plus the number of predictor variables included in this model would make it). This will be reserved for a future analysis.
+
+```{r}
+#| label: assumption check
+#| figure-align: center
+#| fig-cap: "Figure 14: The multivariate linear model was assessed for how well the model-predicted data matched the observed data (posterior predictive check), overdispersion, homogeneity of variance, influential observations, collinearity between predictor variables, and normality of residuals. Assumptions checks were conducted using the r/check_model() function in the r/performance package."
+
+check_model(slider_whiff_glm)
+```
+
+The posterior predictive check looks great - the model-predicted data mirrors the observed data nearly identically. There are no indicators of concern with homogeneity of variance, influential observations, or normality of residuals. However, there are issues with overdispersion or zero-inflation and with co-linearity (Figure 14). To deal with overdispersion, I will update the model to assume a quasipoisson distribution, which treats overdispersion as a nuisance parameter.
+
+```{r}
+#| label: quasipoisson model
+#| output: false
+#| echo: true
+
+slider_whiff_glm <- glm(whiffs ~ velocity + spin_rate + 
+                        release_extension + horizontal_break + vertical_break 
+                        + rise + tail + zone + offset(log(swings)),
+                        family = quasipoisson(link = "log"),
+                        data = slider_move_location_stats_select)
+```
+
+Next I have to consider the possible co-linearity concerns. There is a moderate VIF for horizontal break and rise, as well as high VIF for velocity and vertical break. I am not overly concerned about this collinearity because the model-predicted data is so so similar to the observed data, indicating that this model is quite like what occurs in reality. However, it is worth looking at the correlation between predictors further.
+
+```{r}
+#| label: correlation calc
+#| output: false
+#| echo: false
+
+slider_move_location_p <- slider_move_location_stats_aggregate %>%
+  as.data.frame() %>%
+  mutate(spin_rate = as.numeric(spin_rate),
+         release_extension = as.numeric(release_extension)) %>% 
+  select(velocity, spin_rate, release_extension,
+         horizontal_break, vertical_break, rise, tail) %>% 
+  cor.mtest(conf.level = 0.95) # calculate correlation p-values
+```
+
+```{r}
+#| label: correlation plot
+#| figure-align: center
+#| fig-cap: "Figure 15: The correlation between each predictor variable was assessed using the r/cor() and r/corrplot() functions from the r/corrplot package. Zone was excluded due to package difficulties evaluating correlations between discrete and continuous variables."
+
+slider_corr_plot <- slider_move_location_stats_aggregate %>%
+  as.data.frame() %>%  
+  mutate(spin_rate = as.numeric(spin_rate),
+         release_extension = as.numeric(release_extension)) %>% 
+  select(velocity, spin_rate, release_extension,
+         horizontal_break, vertical_break, rise, tail) %>% # select the variables
+  as.matrix() %>%                   
+  cor() %>% 
+  corrplot(lower.col = "black",
+           number.cex = 0.5,,
+           addCoef.col = "black",
+           type = 'lower',
+           p.mat = slider_move_location_p$p,
+           method = 'circle',
+           insig = 'blank',
+           order = 'AOE',
+           diag = FALSE)
+
+slider_corr_plot
+```
+
+These results are interesting both in regard to the co-linearity concerns of my model and also in regards to baseball physics as a whole. Velocity has a strong negative correlation with a slider's horizontal and vertical break (Figure 15). Intuitively, it makes sense that more movement would decrease velocity by increasing friction and resistance exposure. However, it can't be determined from this whether increased velocity reduces movement or vice versa. 
+
+Spin rate is correlated with all movement types (Figure 15). This aligns with modern pitching development approaches that emphasize increasing spin rate to improve pitch movement. In fact, there was a recent [MLB cheating scandal](https://www.mlb.com/news/updated-sticky-stuff-guidelines#:~:text=Any%20pitcher%20who%20possesses%20or,and%20pitcher%20will%20be%20ejected.) in which pitchers were caught using an illegal, sticky substance to increase grip and spin rate during games.
+
+Lastly, all movement types are positively correlated with one another (Figure 15). This means that generally, increases in one type of movement are associated with increases in all type of movement. This may indicate that "movement" could be considered an overarching pitch factor comprised of individual metrics.
+
+For the purpose of this linear model and analysis, I will not remove any of these co-linear variables. So what does this model suggest about the influence of these predictor variables on the likelihood that a hitter will whiff against a slider?
+
+```{r}
+#| label: R2 analysis
+
+r2(slider_whiff_glm)
+```
+
+First off, the model explains 97% of the variance in the data. That's excellent.
+
+```{r}
+#| label: coef calcs
+#| output: false
+
+whiff_model_coefs <- coef(summary(slider_whiff_glm)) %>% 
+  as.data.frame() %>% 
+  rename("Influence" = "Estimate",
+         "T-Value" = "t value") %>% 
+  select(c('Influence', 'Std. Error', 'T-Value')) %>% 
+  signif(digits = 3) %>% 
+  format(scientific = TRUE)
+```
+
+```{r}
+#| label: coef table
+#| figure-align: center
+#| fig-cap: "Table 2: The modeled influence of each predictor variable on whiffs against sliders relative to the mean was calculated using the r/ceof() function from the r/stats package."
+
+whiff_model_coefs_table <- reactable(whiff_model_coefs,
+                                     pagination = FALSE,
+                                     sortable = TRUE,
+                                     defaultColDef = colDef(align = "center")) %>%
+  add_title("Influence of Different Predictors on Whiff Likelihood",
+            font_size = 28,
+            align = "center")
+
+whiff_model_coefs_table
+```
+
+This model demonstrates that increases in each predictor, except rise and tail movements, increases whiff likelihood. Additionally, throwing sliders outside of the zone is more effective than throwing them inside the zone, with low and outside the zone being the ultimate locations. Throwing a slider towards the middle or center nonants in the zone decreases whiff likelihood (Table 2).
+
+Numbers are fun and all, but visualizations are pretty. I'll plot the modeled influence of pitch location on whiff likelihood in more depth, to make this more digestible.
+
+```{r}
+#| label: zone visreg
+#| figure-align: center
+#| fig-cap: "Figure 16: The modeled influence of pitch location whiffs against sliders relative to the mean was plotted using the r/visreg() function from the r/visreg package."
+
+zone_visreg <- visreg(slider_whiff_glm,
+                      "zone",
+                      gg = TRUE,
+                      line.par = list(col = "red",
+                                      alpha = 1)) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  labs(x = "Pitch Location",
+       y = "Whiff Ratio Relative to the Mean")
+
+zone_visreg
+```
+
+This model demonstrates that throwing sliders in the middle of the zone result in the lowest whiff percentage of any location, relative to the mean. Throwing sliders in the top of the zone is slightly better, and throwing sliders low in the zone is even better. Pitches in the middle result in fewer fewer whiffs, while pitches in the right result in the most (Figure 16). This is most likely due to the inclusion of all pitcher and batter handedness; most pitchers and hitters are righties, so most slider will break down and away from the hitter's swing. Future analyses should split the data by pitcher and batter handedness to obtain an exact understanding of the relationship between pitch location and whiff likelihood.
+
+Throwing pitches outside of the result leads to more whiffs than inside the zone, with pitches that are low and outside the zone resulting in the most whiffs. The best location to throw the slider in is low and outside the zone to the right side of the plate (Figure 16), though this is also likely driven by the dominance of righty pitchers and righty hitters in this sample.
+
+Since there's a clear relationship between pitch location and whiff likelihood, I'll split all future visualizations by zone. I'll start with velocity.
+
+::: {.panel-tabset}
+
+## Figure 17: Velocity, Inside the Zone
+
+```{r}
+#| label: modeled influence of velocity inside the zone plot
+#| figure-align: center
+#| fig-cap: "Figure 17: The modeled influence of velocity on whiffs against sliders inside the zone, relative to the mean was plotted by location."
+
+velo_visreg_IBC <- visreg(slider_whiff_glm,
+                          "velocity",
+                           gg = TRUE,
+                           by = "zone",
+                           partial = FALSE,
+                           rug = FALSE,
+                           line.par = list(col = "black",
+                                           alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1, # this and ncol split plots into individual
+                      page = 1) # this is the facet that will be plotted
+
+velo_visreg_IBL <- visreg(slider_whiff_glm,
+                          "velocity",
+                           gg = TRUE,
+                           by = "zone",
+                           partial = FALSE,
+                           rug = FALSE,
+                           line.par = list(col = "black",
+                                           alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 2)
+
+velo_visreg_IBR <- visreg(slider_whiff_glm,
+                          "velocity",
+                           gg = TRUE,
+                           by = "zone",
+                           partial = FALSE,
+                           rug = FALSE,
+                           line.par = list(col = "black",
+                                           alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 3)
+
+velo_visreg_IMC <- visreg(slider_whiff_glm,
+                          "velocity",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 4)
+
+velo_visreg_IML <- visreg(slider_whiff_glm,
+                          "velocity",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 5)
+
+velo_visreg_IMR <- visreg(slider_whiff_glm,
+                          "velocity",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.text.x = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 6)
+
+velo_visreg_ITC <- visreg(slider_whiff_glm,
+                          "velocity",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 11)
+
+velo_visreg_ITL <- visreg(slider_whiff_glm,
+                          "velocity",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 12)
+
+velo_visreg_ITR <- visreg(slider_whiff_glm,
+                          "velocity",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 13)
+
+velo_visreg_inside <- ggarrange(velo_visreg_ITL, velo_visreg_ITC, 
+                                velo_visreg_ITR, velo_visreg_IML, 
+                                velo_visreg_IMC, velo_visreg_IMR,
+                                velo_visreg_IBL, velo_visreg_IBC,
+                                velo_visreg_IBR,
+                                ncol = 3,
+                                nrow = 3) %>%
+  annotate_figure(left = textGrob("Whiff Ratio Relative to the Mean", rot = 90, vjust = 1, gp = gpar(cex = 1.3)),
+                  bottom = textGrob("Velocity (mph)", gp = gpar(cex = 1.3)))
+
+velo_visreg_inside
+```
+
+## Figure 18: Velocity, Outside the Zone
+
+```{r}
+#| label: modeled influence of velocity outside the zone plot
+#| figure-align: center
+#| fig-cap: "Figure 18: The modeled influence of velocity on whiffs against sliders outside the zone, relative to the mean was plotted by location."
+
+velo_visreg_OBL <- visreg(slider_whiff_glm,
+                          "velocity",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 7)
+
+velo_visreg_OBR <- visreg(slider_whiff_glm,
+                          "velocity",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 8)
+
+velo_visreg_OTL <- visreg(slider_whiff_glm,
+                          "velocity",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 9)
+
+velo_visreg_OTR <- visreg(slider_whiff_glm,
+                          "velocity",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.text.x = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 10)
+
+velo_visreg_outside <- ggarrange(velo_visreg_OTL, velo_visreg_OTR,
+                                 velo_visreg_OBL, velo_visreg_OBR,
+                                 ncol = 2,
+                                 nrow = 2) %>% 
+  annotate_figure(left = textGrob("Whiff Ratio Relative to the Mean",
+                                  rot = 90,
+                                  vjust = 1,
+                                  gp = gpar(cex = 1.3)),
+                  bottom = textGrob("Velocity (mph)",
+                                    gp = gpar(cex = 1.3)))
+
+velo_visreg_outside
+```
+
+:::
+
+As we already saw in Table 2, velocity increases whiff likelihood across all pitch locations. It is clear here that pitches outside the zone lead to a great number of whiffs than pitches inside the zone. However, the degree of velocity's influence is largely similar across zones (Figures17-18).
+
+I'll produce the same plots for release extension, spin rate, and the four movement types. Disclaimer: the conclusions are largely the same for release extension, spin rate, horizontal movement, and vertical movement as they are for velocity.
+
+::: {.panel-tabset}
+
+## Figure 19: Release Ext., Inside the Zone
+
+```{r}
+#| label: modeled influence of release extension inside the zone plot
+#| figure-align: center
+#| fig-cap: "Figure 19: The modeled influence of release extension on whiffs against sliders inside the zone, relative to the mean was plotted by location."
+
+rele_visreg_IBC <- visreg(slider_whiff_glm,
+                          "release_extension",
+                           gg = TRUE,
+                           by = "zone",
+                           partial = FALSE,
+                           rug = FALSE,
+                           line.par = list(col = "black",
+                                           alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 1)
+
+rele_visreg_IBL <- visreg(slider_whiff_glm,
+                          "release_extension",
+                           gg = TRUE,
+                           by = "zone",
+                           partial = FALSE,
+                           rug = FALSE,
+                           line.par = list(col = "black",
+                                           alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 2)
+
+rele_visreg_IBR <- visreg(slider_whiff_glm,
+                          "release_extension",
+                           gg = TRUE,
+                           by = "zone",
+                           partial = FALSE,
+                           rug = FALSE,
+                           line.par = list(col = "black",
+                                           alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 3)
+
+rele_visreg_IMC <- visreg(slider_whiff_glm,
+                          "release_extension",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 4)
+
+rele_visreg_IML <- visreg(slider_whiff_glm,
+                          "release_extension",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 5)
+
+rele_visreg_IMR <- visreg(slider_whiff_glm,
+                          "release_extension",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.text.x = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 6)
+
+rele_visreg_ITC <- visreg(slider_whiff_glm,
+                          "release_extension",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 11)
+
+rele_visreg_ITL <- visreg(slider_whiff_glm,
+                          "release_extension",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 12)
+
+rele_visreg_ITR <- visreg(slider_whiff_glm,
+                          "release_extension",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 13)
+
+rele_visreg_inside <- ggarrange(rele_visreg_ITL, rele_visreg_ITC, 
+                                rele_visreg_ITR, rele_visreg_IML, 
+                                rele_visreg_IMC, rele_visreg_IMR,
+                                rele_visreg_IBL, rele_visreg_IBC,
+                                rele_visreg_IBR,
+                                ncol = 3,
+                                nrow = 3) %>% 
+  annotate_figure(left = textGrob("Whiff Ratio Relative to the Mean", rot = 90, vjust = 1, gp = gpar(cex = 1.3)),
+                  bottom = textGrob("Release Extension (in)", gp = gpar(cex = 1.3)))
+
+rele_visreg_inside
+```
+
+## Figure 20: Release Ext., Outside the Zone
+
+```{r}
+#| label: modeled influence of release extension outside the zone plot
+#| figure-align: center
+#| fig-cap: "Figure 20: The modeled influence of release extension on whiffs against sliders outside the zone, relative to the mean was plotted by location."
+
+rele_visreg_OBL <- visreg(slider_whiff_glm,
+                          "release_extension",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 7)
+
+rele_visreg_OBR <- visreg(slider_whiff_glm,
+                          "release_extension",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 8)
+
+rele_visreg_OTL <- visreg(slider_whiff_glm,
+                          "release_extension",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 9)
+
+rele_visreg_OTR <- visreg(slider_whiff_glm,
+                          "release_extension",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.text.x = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 10)
+
+rele_visreg_outside <- ggarrange(rele_visreg_OTL, rele_visreg_OTR,
+                                 rele_visreg_OBL, rele_visreg_OBR,
+                                 ncol = 2,
+                                 nrow = 2) %>% 
+  annotate_figure(left = textGrob("Whiff Ratio Relative to the Mean",
+                                  rot = 90,
+                                  vjust = 1,
+                                  gp = gpar(cex = 1.3)),
+                  bottom = textGrob("Release Extension (in))",
+                                    gp = gpar(cex = 1.3)))
+
+rele_visreg_outside
+```
+
+::: {.panel-tabset}
+
+## Figure 21: Spin Rate, Inside the Zone
+
+```{r}
+#| label: modeled influence of spin rate inside the zone plot
+#| figure-align: center
+#| fig-cap: "Figure 21: The modeled influence of spin rate on whiffs against sliders inside the zone, relative to the mean was plotted by location."
+
+spin_visreg_IBC <- visreg(slider_whiff_glm,
+                          "spin_rate",
+                           gg = TRUE,
+                           by = "zone",
+                           partial = FALSE,
+                           rug = FALSE,
+                           line.par = list(col = "black",
+                                           alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 1)
+
+spin_visreg_IBL <- visreg(slider_whiff_glm,
+                          "spin_rate",
+                           gg = TRUE,
+                           by = "zone",
+                           partial = FALSE,
+                           rug = FALSE,
+                           line.par = list(col = "black",
+                                           alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 2)
+
+spin_visreg_IBR <- visreg(slider_whiff_glm,
+                          "spin_rate",
+                           gg = TRUE,
+                           by = "zone",
+                           partial = FALSE,
+                           rug = FALSE,
+                           line.par = list(col = "black",
+                                           alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 3)
+
+spin_visreg_IMC <- visreg(slider_whiff_glm,
+                          "spin_rate",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 4)
+
+spin_visreg_IML <- visreg(slider_whiff_glm,
+                          "spin_rate",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 5)
+
+spin_visreg_IMR <- visreg(slider_whiff_glm,
+                          "spin_rate",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.text.x = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 6)
+
+spin_visreg_ITC <- visreg(slider_whiff_glm,
+                          "spin_rate",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 11)
+
+spin_visreg_ITL <- visreg(slider_whiff_glm,
+                          "spin_rate",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 12)
+
+spin_visreg_ITR <- visreg(slider_whiff_glm,
+                          "spin_rate",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 13)
+
+spin_visreg_inside <- ggarrange(spin_visreg_ITL, spin_visreg_ITC, 
+                                spin_visreg_ITR, spin_visreg_IML, 
+                                spin_visreg_IMC, spin_visreg_IMR,
+                                spin_visreg_IBL, spin_visreg_IBC,
+                                spin_visreg_IBR,
+                                ncol = 3,
+                                nrow = 3) %>% 
+  annotate_figure(top = text_grob("Effect of Spin Rate on Whiff Likelihood on Pitches Inside the Zone",
+                                 color = "black",
+                                 face = "bold",
+                                 size = 15),
+                  left = textGrob("Whiff Ratio Relative to the Mean", rot = 90, vjust = 1, gp = gpar(cex = 1.3)),
+                  bottom = textGrob("Spin Rate (rpm)", gp = gpar(cex = 1.3)))
+
+spin_visreg_inside
+```
+
+## Figure 22: Spin Rate, Outside the Zone
+
+```{r}
+#| label: modeled influence of spin rate extension outside the zone plot
+#| figure-align: center
+#| fig-cap: "Figure 22: The modeled influence of spin rate on whiffs against sliders outside the zone, relative to the mean was plotted by location."
+
+spin_visreg_OBL <- visreg(slider_whiff_glm,
+                          "spin_rate",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 7)
+
+spin_visreg_OBR <- visreg(slider_whiff_glm,
+                          "spin_rate",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 8)
+
+spin_visreg_OTL <- visreg(slider_whiff_glm,
+                          "spin_rate",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 9)
+
+spin_visreg_OTR <- visreg(slider_whiff_glm,
+                          "spin_rate",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.text.x = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 10)
+
+spin_visreg_outside <- ggarrange(spin_visreg_OTL, spin_visreg_OTR,
+                                 spin_visreg_OBL, spin_visreg_OBR,
+                                 ncol = 2,
+                                 nrow = 2) %>% 
+  annotate_figure(left = textGrob("Whiff Ratio Relative to the Mean",
+                                  rot = 90,
+                                  vjust = 1,
+                                  gp = gpar(cex = 1.3)),
+                  bottom = textGrob("Spin Rate (rpm)",
+                                    gp = gpar(cex = 1.3)))
+
+spin_visreg_outside
+```
+
+::: {.panel-tabset}
+
+## Figure 23: Horizontal Break, Inside the Zone
+
+```{r}
+#| label: modeled influence of horizontal break inside the zone plot
+#| figure-align: center
+#| fig-cap: "Figure 23: The modeled influence of horizontal break on whiffs against sliders inside the zone, relative to the mean was plotted by location."
+
+horz_visreg_IBC <- visreg(slider_whiff_glm,
+                          "horizontal_break",
+                           gg = TRUE,
+                           by = "zone",
+                           partial = FALSE,
+                           rug = FALSE,
+                           line.par = list(col = "black",
+                                           alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 1)
+
+horz_visreg_IBL <- visreg(slider_whiff_glm,
+                          "horizontal_break",
+                           gg = TRUE,
+                           by = "zone",
+                           partial = FALSE,
+                           rug = FALSE,
+                           line.par = list(col = "black",
+                                           alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 2)
+
+horz_visreg_IBR <- visreg(slider_whiff_glm,
+                          "horizontal_break",
+                           gg = TRUE,
+                           by = "zone",
+                           partial = FALSE,
+                           rug = FALSE,
+                           line.par = list(col = "black",
+                                           alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 3)
+
+horz_visreg_IMC <- visreg(slider_whiff_glm,
+                          "horizontal_break",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 4)
+
+horz_visreg_IML <- visreg(slider_whiff_glm,
+                          "horizontal_break",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 5)
+
+horz_visreg_IMR <- visreg(slider_whiff_glm,
+                          "horizontal_break",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.text.x = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 6)
+
+horz_visreg_ITC <- visreg(slider_whiff_glm,
+                          "horizontal_break",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 11)
+
+horz_visreg_ITL <- visreg(slider_whiff_glm,
+                          "horizontal_break",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 12)
+
+horz_visreg_ITR <- visreg(slider_whiff_glm,
+                          "horizontal_break",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 13)
+
+horz_visreg_inside <- ggarrange(horz_visreg_ITL, horz_visreg_ITC, 
+                                horz_visreg_ITR, horz_visreg_IML, 
+                                horz_visreg_IMC, horz_visreg_IMR,
+                                horz_visreg_IBL, horz_visreg_IBC,
+                                horz_visreg_IBR,
+                                ncol = 3,
+                                nrow = 3) %>% 
+  annotate_figure(left = textGrob("Whiff Ratio Relative to the Mean", rot = 90, vjust = 1, gp = gpar(cex = 1.3)),
+                  bottom = textGrob("Horizontal Break (in)", gp = gpar(cex = 1.3)))
+
+horz_visreg_inside
+```
+
+## Figure 24: Horizontal Break, Outside the Zone
+
+```{r}
+#| label: modeled influence of horizontal break outside the zone plot
+#| figure-align: center
+#| fig-cap: "Figure 24: The modeled influence of horizontal break on whiffs against sliders outside the zone, relative to the mean was plotted by location."
+
+horz_visreg_OBL <- visreg(slider_whiff_glm,
+                          "horizontal_break",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 7)
+
+horz_visreg_OBR <- visreg(slider_whiff_glm,
+                          "horizontal_break",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 8)
+
+horz_visreg_OTL <- visreg(slider_whiff_glm,
+                          "horizontal_break",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 9)
+
+horz_visreg_OTR <- visreg(slider_whiff_glm,
+                          "horizontal_break",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.text.x = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 10)
+
+horz_visreg_outside <- ggarrange(horz_visreg_OTL, horz_visreg_OTR,
+                                 horz_visreg_OBL, horz_visreg_OBR,
+                                 ncol = 2,
+                                 nrow = 2) %>% 
+  annotate_figure(left = textGrob("Whiff Ratio Relative to the Mean",
+                                  rot = 90,
+                                  vjust = 1,
+                                  gp = gpar(cex = 1.3)),
+                  bottom = textGrob("Horizontal Break (in))",
+                                    gp = gpar(cex = 1.3)))
+
+horz_visreg_outside
+```
+
+:::
+
+::: {.panel-tabset}
+
+## Figure 25: Vertical Break, Inside the Zone
+
+```{r}
+#| label: modeled influence of vertical break inside the zone plot
+#| figure-align: center
+#| fig-cap: "Figure 25: The modeled influence of vertical break on whiffs against sliders inside the zone, relative to the mean was plotted by location."
+
+vert_visreg_IBC <- visreg(slider_whiff_glm,
+                          "vertical_break",
+                           gg = TRUE,
+                           by = "zone",
+                           partial = FALSE,
+                           rug = FALSE,
+                           line.par = list(col = "black",
+                                           alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 1)
+
+vert_visreg_IBL <- visreg(slider_whiff_glm,
+                          "vertical_break",
+                           gg = TRUE,
+                           by = "zone",
+                           partial = FALSE,
+                           rug = FALSE,
+                           line.par = list(col = "black",
+                                           alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 2)
+
+vert_visreg_IBR <- visreg(slider_whiff_glm,
+                          "vertical_break",
+                           gg = TRUE,
+                           by = "zone",
+                           partial = FALSE,
+                           rug = FALSE,
+                           line.par = list(col = "black",
+                                           alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 3)
+
+vert_visreg_IMC <- visreg(slider_whiff_glm,
+                          "vertical_break",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 4)
+
+vert_visreg_IML <- visreg(slider_whiff_glm,
+                          "vertical_break",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 5)
+
+vert_visreg_IMR <- visreg(slider_whiff_glm,
+                          "vertical_break",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.text.x = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 6)
+
+vert_visreg_ITC <- visreg(slider_whiff_glm,
+                          "vertical_break",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 11)
+
+vert_visreg_ITL <- visreg(slider_whiff_glm,
+                          "vertical_break",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 12)
+
+vert_visreg_ITR <- visreg(slider_whiff_glm,
+                          "vertical_break",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 13)
+
+vert_visreg_inside <- ggarrange(vert_visreg_ITL, vert_visreg_ITC, 
+                                vert_visreg_ITR, vert_visreg_IML, 
+                                vert_visreg_IMC, vert_visreg_IMR,
+                                vert_visreg_IBL, vert_visreg_IBC,
+                                vert_visreg_IBR,
+                                ncol = 3,
+                                nrow = 3) %>% 
+  annotate_figure(left = textGrob("Whiff Ratio Relative to the Mean", rot = 90, vjust = 1, gp = gpar(cex = 1.3)),
+                  bottom = textGrob("Vertical Break (in)", gp = gpar(cex = 1.3)))
+
+vert_visreg_inside
+```
+
+## Figure 26: Vertical Break, Outside the Zone
+
+```{r}
+#| label: modeled influence of vertical break outside the zone plot
+#| figure-align: center
+#| fig-cap: "Figure 26: The modeled influence of vertical break on whiffs against sliders outside the zone, relative to the mean was plotted by location."
+
+vert_visreg_OBL <- visreg(slider_whiff_glm,
+                          "vertical_break",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 7)
+
+vert_visreg_OBR <- visreg(slider_whiff_glm,
+                          "vertical_break",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 8)
+
+vert_visreg_OTL <- visreg(slider_whiff_glm,
+                          "vertical_break",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 9)
+
+vert_visreg_OTR <- visreg(slider_whiff_glm,
+                          "vertical_break",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.text.x = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 10)
+
+vert_visreg_outside <- ggarrange(vert_visreg_OTL, vert_visreg_OTR,
+                                 vert_visreg_OBL, vert_visreg_OBR,
+                                 ncol = 2,
+                                 nrow = 2) %>% 
+  annotate_figure(top = text_grob("Effect of Vertical Break. on Whiff Likelihood on Pitches Outside the Zone",
+                                 color = "black",
+                                 face = "bold",
+                                 size = 15),
+                  left = textGrob("Whiff Ratio Relative to the Mean",
+                                  rot = 90,
+                                  vjust = 1,
+                                  gp = gpar(cex = 1.3)),
+                  bottom = textGrob("Vertical Break (in))",
+                                    gp = gpar(cex = 1.3)))
+
+vert_visreg_outside
+```
+
+:::
+
+See? Pretty much the same trend for all of these predictors. Rise and tail movement is where it gets interesting.
+
+::: {.panel-tabset}
+
+## Figure 27: Rise, Inside the Zone
+
+```{r}
+#| label: modeled influence of rise inside the zone plot
+#| figure-align: center
+#| fig-cap: "Figure 27: The modeled influence of rise on whiffs against sliders inside the zone, relative to the mean was plotted by location."
+
+rise_visreg_IBC <- visreg(slider_whiff_glm,
+                          "rise",
+                           gg = TRUE,
+                           by = "zone",
+                           partial = FALSE,
+                           rug = FALSE,
+                           line.par = list(col = "black",
+                                           alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 1)
+
+rise_visreg_IBL <- visreg(slider_whiff_glm,
+                          "rise",
+                           gg = TRUE,
+                           by = "zone",
+                           partial = FALSE,
+                           rug = FALSE,
+                           line.par = list(col = "black",
+                                           alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 2)
+
+rise_visreg_IBR <- visreg(slider_whiff_glm,
+                          "rise",
+                           gg = TRUE,
+                           by = "zone",
+                           partial = FALSE,
+                           rug = FALSE,
+                           line.par = list(col = "black",
+                                           alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 3)
+
+rise_visreg_IMC <- visreg(slider_whiff_glm,
+                          "rise",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 4)
+
+rise_visreg_IML <- visreg(slider_whiff_glm,
+                          "rise",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 5)
+
+rise_visreg_IMR <- visreg(slider_whiff_glm,
+                          "rise",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.text.x = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 6)
+
+rise_visreg_ITC <- visreg(slider_whiff_glm,
+                          "rise",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 11)
+
+rise_visreg_ITL <- visreg(slider_whiff_glm,
+                          "rise",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 12)
+
+rise_visreg_ITR <- visreg(slider_whiff_glm,
+                          "rise",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 13)
+
+rise_visreg_inside <- ggarrange(rise_visreg_ITL, rise_visreg_ITC, 
+                                rise_visreg_ITR, rise_visreg_IML, 
+                                rise_visreg_IMC, rise_visreg_IMR,
+                                rise_visreg_IBL, rise_visreg_IBC,
+                                rise_visreg_IBR,
+                                ncol = 3,
+                                nrow = 3) %>% 
+  annotate_figure(left = textGrob("Whiff Ratio Relative to the Mean", rot = 90, vjust = 1, gp = gpar(cex = 1.3)),
+                  bottom = textGrob("Rise (in)", gp = gpar(cex = 1.3)))
+
+rise_visreg_inside
+```
+
+## Figure 28: Rise, Outside the Zone
+
+```{r}
+#| label: modeled influence of rise outside the zone plot
+#| figure-align: center
+#| fig-cap: "Figure 28: The modeled influence of rise on whiffs against sliders outside the zone, relative to the mean was plotted by location."
+
+rise_visreg_OBL <- visreg(slider_whiff_glm,
+                          "rise",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 7)
+
+rise_visreg_OBR <- visreg(slider_whiff_glm,
+                          "rise",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 8)
+
+rise_visreg_OTL <- visreg(slider_whiff_glm,
+                          "rise",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 9)
+
+rise_visreg_OTR <- visreg(slider_whiff_glm,
+                          "rise",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.text.x = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 10)
+
+rise_visreg_outside <- ggarrange(rise_visreg_OTL, rise_visreg_OTR,
+                                 rise_visreg_OBL, rise_visreg_OBR,
+                                 ncol = 2,
+                                 nrow = 2) %>% 
+  annotate_figure(top = text_grob("Effect of Rise on Whiff Likelihood on Pitches Outside the Zone",
+                                 color = "black",
+                                 face = "bold",
+                                 size = 15),
+                  left = textGrob("Whiff Ratio Relative to the Mean",
+                                  rot = 90,
+                                  vjust = 1,
+                                  gp = gpar(cex = 1.3)),
+                  bottom = textGrob("Rise (in))",
+                                    gp = gpar(cex = 1.3)))
+
+rise_visreg_outside
+```
+
+:::
+
+As seen in Table 2, an increase in rise in this model leads to a small decrease in whiffs across all strike zone locations (Figures 27-28). This opposes earlier observations from MLB data, where increases in rise are associated with an increase in whiff likelihood (Figure 10). Rising movement is correlated with spin rate and each movement type (Figure 15), so perhaps the associated between rise and whiff likelihood in the observed MLB data is driven by one or more of these factors.
+
+::: {.panel-tabset}
+
+## Figure 29: Tail, Inside the Zone
+
+```{r}
+#| label: modeled influence of tail inside the zone plot
+#| figure-align: center
+#| fig-cap: "Figure 29: The modeled influence of tail on whiffs against sliders inside the zone, relative to the mean was plotted by location."
+
+tail_visreg_IBC <- visreg(slider_whiff_glm,
+                          "tail",
+                           gg = TRUE,
+                           by = "zone",
+                           partial = FALSE,
+                           rug = FALSE,
+                           line.par = list(col = "black",
+                                           alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 1)
+
+tail_visreg_IBL <- visreg(slider_whiff_glm,
+                          "tail",
+                           gg = TRUE,
+                           by = "zone",
+                           partial = FALSE,
+                           rug = FALSE,
+                           line.par = list(col = "black",
+                                           alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 2)
+
+tail_visreg_IBR <- visreg(slider_whiff_glm,
+                          "tail",
+                           gg = TRUE,
+                           by = "zone",
+                           partial = FALSE,
+                           rug = FALSE,
+                           line.par = list(col = "black",
+                                           alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 3)
+
+tail_visreg_IMC <- visreg(slider_whiff_glm,
+                          "tail",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 4)
+
+tail_visreg_IML <- visreg(slider_whiff_glm,
+                          "tail",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 5)
+
+tail_visreg_IMR <- visreg(slider_whiff_glm,
+                          "tail",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.text.x = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 6)
+
+tail_visreg_ITC <- visreg(slider_whiff_glm,
+                          "tail",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 11)
+
+tail_visreg_ITL <- visreg(slider_whiff_glm,
+                          "tail",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 12)
+
+tail_visreg_ITR <- visreg(slider_whiff_glm,
+                          "tail",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 13)
+
+tail_visreg_inside <- ggarrange(tail_visreg_ITL, tail_visreg_ITC, 
+                                tail_visreg_ITR, tail_visreg_IML, 
+                                tail_visreg_IMC, tail_visreg_IMR,
+                                tail_visreg_IBL, tail_visreg_IBC,
+                                tail_visreg_IBR,
+                                ncol = 3,
+                                nrow = 3) %>% 
+  annotate_figure(left = textGrob("Whiff Ratio Relative to the Mean", rot = 90, vjust = 1, gp = gpar(cex = 1.3)),
+                  bottom = textGrob("Tail (in)", gp = gpar(cex = 1.3)))
+
+tail_visreg_inside
+```
+
+## Figure 30: Tail, Outside the Zone
+
+```{r}
+#| label: modeled influence of tail outside the zone plot
+#| figure-align: center
+#| fig-cap: "Figure 30: The modeled influence of tail on whiffs against sliders outside the zone, relative to the mean was plotted by location."
+
+tail_visreg_OBL <- visreg(slider_whiff_glm,
+                          "tail",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 7)
+
+tail_visreg_OBR <- visreg(slider_whiff_glm,
+                          "tail",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 8)
+
+tail_visreg_OTL <- visreg(slider_whiff_glm,
+                          "tail",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 9)
+
+tail_visreg_OTR <- visreg(slider_whiff_glm,
+                          "tail",
+                          gg = TRUE,
+                          by = "zone",
+                          partial = FALSE,
+                          rug = FALSE,
+                          line.par = list(col = "black",
+                                          alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.text.x = element_blank(),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 1,
+                      nrow = 1,
+                      page = 10)
+
+tail_visreg_outside <- ggarrange(tail_visreg_OTL, tail_visreg_OTR,
+                                 tail_visreg_OBL, tail_visreg_OBR,
+                                 ncol = 2,
+                                 nrow = 2) %>% 
+  annotate_figure(left = textGrob("Whiff Ratio Relative to the Mean",
+                                  rot = 90,
+                                  vjust = 1,
+                                  gp = gpar(cex = 1.3)),
+                  bottom = textGrob("Tail (in))",
+                                    gp = gpar(cex = 1.3)))
+
+tail_visreg_outside
+```
+
+:::
+
+An increase in tail in this model leads to a slightly larger decrease in whiffs, compared to rise, across all strike zone locations (Figures 29-30). Similarly to rise, this result opposes the observations from the observed MLB data, where increases in rise are associated with an increase in whiff likelihood (Figure 11). Tail is also correlated with spin rate and each movement type (Figure 15), so perhaps, this associated in the observed MLB data is driven by one or more of these factors.
+
+## Conclusions and Future Directions
+
+### If you are a pitcher, how can you use this analysis to improve? 
+
+First, work on increasing your velocity while simultaneously increasing the spin rate of your slider and your release extension. As you work on different grips and release angles to manipulate pitch movement, prioritize developing vertical break over horizontal break. Try to minimize the amount that the pitch rises and tails. Furthermore, pitch the slider low. Don't throw it in the middle or center of the plate. You might be able to squeek by with a high slider every now and then, but focus on commanding the pitch low and out of the zone - make the batter think it is going to be a strike before it breaks down and away.
+
+### What's next for this analysis?
+
+There are a lot of directions to go from here. First, this analysis can be applied to any of the other pitch types to preliminarily assess the factors that influence a pitch's propensity for any outcome (good or bad), and the contribution that each factor makes towards that outcome. I've mentioned a couple interesting targets throughout this report, for various reasons, such as the change up and sinker. Either of these would be interesting pitches to analyze next.
+
+There are a few variables that can be added to this analysis to increase its similarity to real-world baseball. First, this analysis should be split by pitcher and batter handedness. For example, this exact analysis pipeline should be repeat four times: for right-handed pitchers vs. right-handed batters, for left-handed pitchers vs. left-handed batters, for right-handed pitchers vs. left-handed batters, for left-handed pitchers vs. right-handed batters. So far, this analysis has only shown why and how to throw a slider. Other variables, such as previous pitches thrown, the game situation, and the ball-strike count should also be analyzed to understand **when** to throw a slider. Though it is not publicly available, it would be very interesting to analyze the effect of when a pitch breaks on pitch outcome. Future analyses should also examine interaction effects between spin rate and the different types of movement, as well as the types of movement amongst each other, as these were shown to be correlated in the model (Figure 15).
+
+Lastly, the usage of pitches should be cross-analyzed with injury risk. The benefit of increasing usage of a pitch may be outweighed by an increased likelihood to develop arm injuries that prevent players from contributing or weaken future performance. Perhaps the pitch usage should be strategically tied to workload (number of pitches thrown per game or season). For example, relievers throw future pitches than starters both in a game and across a season, and thus may be more appropriate for pitch strategies that involve more high-risk pitches.

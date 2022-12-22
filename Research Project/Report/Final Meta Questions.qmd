@@ -1,0 +1,105 @@
+---
+title: "Final Project"
+subtitle: "Meta Questions"
+author: "Nathan Strozewski"
+date: 2022-12-22
+editor: visual
+---
+
+## Presentation:
+
+### How did it go for you? How well do you think you performed, vis a vis the weak, satisfactory, and strong rubric.
+
+I attempted to create Quarto slides but, honestly, was too mentally spent to learn the syntax. I resorted to Powerpoint slides to make sure that I could still comfortably communicate all my points. However, this led to some technical errors that interrupted the really awesome pitch overlay gifs (see my final report) and the format of a slide or two. Nothing that prevented my points from getting across, but disappointing nonetheless.
+
+I consider myself a very strong presenter and communicator, and feel I made those standards here. But my technical issues and lack of Quarto slides were not up to par. I also opted to include A LOT of analyses, causing my presentation to push its allotted time. I'll give myself a strong rating, though, because the audience was very engaged and asked several questions during the Q&A and after. This makes me think that the presentation - which is designed to grab attention and inform - did it's job.
+
+## Paper:
+
+### Please rate yourself as weak, sufficient, or strong on the following criteria, and tell me why.
+
+#### Clear statement of questions & hypotheses?
+
+Strong. I clearly stated my research questions and hypotheses as they arose and described the rationale in detail.
+
+#### Did you choose the right analyses?
+
+Strong. I errered on the side of over-analyzing my data here. I wanted to be as convincing in my points as possible.
+
+#### Did you justify the analysis?
+
+Strong. I tried to report this in a way that let the data justify the analyses. What question did I have? Why does that matter? How should it be answered? Why is this the appropriate method? What doesn't this address? I walked through these each time in writing to strengthen belief in the rationale of my approach.
+
+#### Did you execute it properly?
+
+Strong. I got creative with my linear model and used an offset(), something we hadn't covered in class. This required a bit of background research but ended up being the appropriate approach. My analyses themselves were always straightforward - comparing sliders to the other pitches or comparing slider pitch factors to the other pitch factors.
+
+#### Did you overcome assumption violations, or inferential traps (p-values, etc.)?
+
+Strong. I had a few concerning assumption violations but worked through each one, resolved where possible, justified when not to resolve, and discussed the limitations this created and how I'll address them in future analyses.
+
+#### Did you describe their results cleanly and clearly?
+
+Strong. I put a lot of work into my figure presentation here to make this behemoth of data analysis digestible. I was as explicit and cohesive as possible with written descriptions.
+
+### Overall Please rate your paper as weak, sufficient, or strong, and tell me why.
+
+## Final Self-Evaluation
+
+### How are you? How has your semester been? Where are you in headspace right now?
+
+I'm exhausted. I took three classes this semester and that was a lot. My research has also had some very large road blocks. I need a vacation.
+
+Beyond happy with my progress this semester though. A lot of the time, particularly my lab work and my work for this class, didn't feel stresssful because I genuinely enjoyed doing it. I just wish there was more time in the data so I can do all this AND relax.
+
+### Learning Objectives:
+
+#### This course had several learning objectives. Please comment on how you feel you have advanced in each of them. Have you achieved them in a way that is satisfactory to you? Please comment on your performance for each objective.
+
+##### To learn how to think about your study system and research question of interest in a systematic way in order to design an efficient observational or experimental research program.
+
+I've spent quite a bit of time thinking about the variables in my system that may be having hidden or indirect effects on my experiments. This was really good practice for optimizing research design and selecting appropriate methods and controls. I've also gotten better at thinking about how to properly design an experiment to address the question. Sometimes, an experiment only kinda answers what you are hoping to address. The literature review workshops we did in the ISC really helped here. I've particularly gotten better at designing an experiment with the future data analysis in mind. What will the data actually look like if I design the experiment this way? Is that format the appropriat format for making sense of the question + answer?
+
+##### To understand how to analyze collected data to derive the most information possible about your research questions.
+
+My biggest struggle at the beginning of the semester was not know what tools existed to conduct an analysis. I knew what point A and point B were, but had no idea how to get in between. I feel very confident now looking at a data set, formulating a question, and executing the appropriate analysis to answer it.
+
+##### Provide the grounding needed to effectively collaborate with statistical experts.
+
+As mentioned in my last response, my biggest road block was not knowing the tools that existed. I understand the why but not the how. Now that I understand the how, I can make sense of what experts communicate and implement it.
+
+##### Allow students to feel sufficiently comfortable with the basic principles of statistical analysis so that they can learn and implement techniques outside of the purview of this course.
+
+I think my final project was an excellent example of this. All semester, we focused on using these skills for biology research. I was able to take the skills and concepts and use them to explore questions I have been curious about in baseball. I have a million ideas for how to use this for future baseball questions and biology questions.
+
+### Tell me about your relationship with thinking about your system of interest, the pathways of causality within it, and how you ask a research question. What has changed over the course of the semester from who you were in September to who you are now?
+
+I addressed this a bit earlier - so I apologize for the redundancy. I'm much more capable of identify the outside or hidden influencers in a system than I was previously. I've spent some time mapping out the systems of my own experiments outside of class to get a clear picture of what's going on. This helps me 1) identify questions to explore the system, 2) ensure that the questions I am asking are relevant to the system, and 3) confirm that the methods I outline to assess the question are appropriate. At the beginning of the semester, I kinda knew that I had to do this, but now I force myself to explicitly go through the process to ensure I utilize it.
+
+### How do you feel you are able to translate your questions about your system of interest into statistical models. What has changed over the course of the semester from who you were in September to who you are now?
+
+At first, I didn't get why everything is a linear model. Now I get it. EVERYTHING is a linear model. You can take literally any system, ask a question, select the outcome to measure, explore the potential predictors, and model it. It's unbelievably useful. I went from not understanding what it meant to loving the utility and implementing it with ease.
+
+### What is your grasp on inference? How do you feel you will approach deriving inference from models now that you have been through this course? What has changed over the course of the semester from who you were in September to who you are now?
+
+Inference is tricky because its basically one big "gray area". My understanding before was that I need to find the p-value, regardless of what I'm studying or asking, and if it isn't < 0.05 it is a worthless finding. In fact, there's been similar discourse in my lab meetings throughout the semester and I've slowly began to understood that most people, even really really smart scientists, don't get inference. The discussion in our class about the p < 0.05 trope really opened my eyes. I now understand that both they type and degree of inference is entirely contingent on the question, data, and methods being applied. You need to follow clear logic and JUSTIFY.
+
+### Code - it’s how we work with data. How do you feel about coding? How do you feel about how you will work with it into the future? What has changed over the course of the semester from who you were in September to who you are now?
+
+It was pretty foreign to me in September. I had some experience with MATLAB, but mostly executing and troubleshooting others' codes. I struggled early on figure out which functions existed - I knew what I wanted to do but didn't know how to do it. I also struggled a lot early on with syntax and typos. All of this boiled up into a lot of frustration.
+
+But hard work and gradual experience helped immensely. I feel really comfortable coding now and honestly like doing it + data analysis better than bench work. I have many ideas of functions I want to write to make my lab work easier, analyses I want to run with future data I am working to collect, and many many many many baseball analyses (I'm hoping to submit this one to Fangraphs Community Research!).
+
+### Given this course, how do you see yourself developing as a scientist on into the future? This could be about how you see yourself developing in terms of designing studies, making inferences, expanding your toolkit, or more. How has this changed who you are and who you will become as a scientist?
+
+I will design my studies with a clearer understanding of my system, how the data will be understood and analyzed, and what limitations exist. I'm more confident in my understanding of the tools and methods to implement. I know what I need to work on and what I want to develop (machine learning) to make research, life, and my interests (sabermetrics) more fun/interesting/productive.
+
+I'm going to be honest - I really think I want to make the shift to research and development for baseball teams. I had previously gotten so close to offers for positions with the Tampa Bay Rays and Miami Marlins, but was limited by my inability to code. With that ability + experience working with complicated baseball data and questions, I think I have a great opportunity to combine a lot of hobbies and interests while making a living.
+
+## Final Question
+
+### Given all you have just said, and really thinking about what is possible in the span of just one semester, what letter grade (bearing in mind we don’t have A+ at UMB) would you give yourself? Why? Note, I reserve the right to change this (and I’ve seen most of you be too down on yourseelves!), but, in all likelihood, this will be your course grade. Tell me what it about it.
+
+I firmly believe I deserve an A. I went from "Very much struggling" to "Confident in my ability to adress any question I have about a data set". This stemmed from a lot of reading resources, a lot of thinking about hard topics, a lot of practicing the methods via coding, and a lot of Impress Yourself's that required all of the above. This was driven by the passion and interest I developed in data analysis and coding. I believe I demonstrated proficiency in all the skills we worked on, or at the very least proficiency in the ability and confidence to learn how to develop the skills necessary or figure it out.
+
+## Thank you for an amazing semester. This course changed my academic (and possibly personal) life!
