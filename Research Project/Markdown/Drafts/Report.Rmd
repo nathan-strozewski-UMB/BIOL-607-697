@@ -1,0 +1,1418 @@
+
+
+
+
+
+
+# Custom Theme
+
+First I need to set a custom theme to make my plots look pretty...
+
+```{r custom_theme}
+
+custom_theme <- function() { 
+  font <- "Helvetica" # font selection
+    
+    theme_minimal() %+replace% # theme based on minimal with following replacements
+    
+    theme(panel.grid.major = element_blank(), # leave grids and axis ticks blank
+          panel.grid.minor = element_blank(),
+          axis.ticks = element_blank(),
+          axis.line = element_line(color = "black",
+                                   size = 1),
+          panel.border = element_rect(color = "black",
+                                      fill=NA,
+                                      size=1),
+          plot.title = element_text(family = font,
+                                    size = 20,
+                                    face = 'bold',
+                                    hjust = 0.5, # move title to center horizontally
+                                    vjust = 2), # move title up a wee bit
+          plot.subtitle = element_text(family = font,
+                                       size = 15,
+                                       hjust = 0.5),
+          plot.caption = element_text(family = font,
+                                      size = 10,
+                                      hjust = 1), # put caption in right corner
+          axis.title = element_text(family = font,
+                                    face = 'italic',
+                                    size = 15),
+          axis.text = element_text(family = font,
+                                   size = 10),
+          axis.text.x = element_text(margin = margin(t = 2, # top
+                                                     r = 2, # right
+                                                     b = 2, # bottom
+                                                     l = 2))) # left
+}
+
+```
+
+# Data Aggregation
+
+I need to aggregate quite a bit of data for this research project. All data was obtained from Baseball Savant (link).
+
+## Pitch Usage Data Aggregation
+
+I will first want to look at trends in pitch usage over time. These datasets are also going to include statistics such as spin_rate, release_extension, launch_speed, etc. that will be interesting to look at to hypothesize about the factors that influence pitch outcome.
+
+```{r pitch usage file aggregation}
+
+library(dplyr) # data manip
+library(data.table) # creating dfs
+
+# function to compile .csv files per pitch and organize
+pitch_usage_aggregate_function <- function(pitch_usage_files_path) {
+  
+pitch_usage_aggregate <- rbindlist(mapply(c,(list.files(path = pitch_usage_files_path,
+                                                  pattern = "*.csv",
+                                                  full.names = TRUE) %>%
+                                               lapply(read.table,
+                                                      header = TRUE,
+                                                      sep = ",",
+                                                      encoding = "UTF-8")),
+                                          (list.files(path = pitch_usage_files_path,
+                                                      pattern = "*.csv",
+                                                      full.names = TRUE) %>%
+                                             basename() %>%
+                                             as.list()),
+                                          SIMPLIFY = FALSE),
+                                   fill = T) %>% 
+  mutate(year = substr(V1, 1, 4)) %>% # pull year from col V1
+  mutate(pitch = substr(V1, 6, 9)) %>% # pull pitch abr from col V1
+  mutate(pitch = recode(pitch, Chan = 'Change', Cutt = 'Cutter', Curv =  'Curveball',
+                        Fast = 'Fastball', Sink = 'Sinker', Slid = 'Slider')) %>% 
+  select(-c(pos3_int_start_distance, pos4_int_start_distance,
+            pos5_int_start_distance, pos6_int_start_distance, 
+            pos7_int_start_distance, pos8_int_start_distance, 
+            pos9_int_start_distance, V1)) %>% # remove select cols
+  select(player_name, player_id, year:pitch, pitches:pitch_percent, spin_rate:velocity,
+         release_extension, effective_speed, eff_min_vel, ba:launch_angle,
+         whiffs:takes) # reorder cols
+  
+return(as.data.frame(pitch_usage_aggregate))
+}
+
+# set paths to pitch files
+changeup_usage_path <- "Data/Pitch Usage/Change"
+curveball_usage_path <- "Data/Pitch Usage/Curveball"
+cutter_usage_path <- "Data/Pitch Usage/Cutter"
+fastball_usage_path <- "Data/Pitch Usage/Fastball"
+sinker_usage_path <- "Data/Pitch Usage/Sinker"
+slider_usage_path <- "Data/Pitch Usage/Slider"
+
+# aggregate pitch files into dfs
+
+changeup_usage_aggregate <- pitch_usage_aggregate_function(changeup_usage_path)
+curveball_usage_aggregate <- pitch_usage_aggregate_function(curveball_usage_path)
+cutter_usage_aggregate <- pitch_usage_aggregate_function(cutter_usage_path)
+fastball_usage_aggregate <- pitch_usage_aggregate_function(fastball_usage_path)
+sinker_usage_aggregate <- pitch_usage_aggregate_function(sinker_usage_path)
+slider_usage_aggregate <- pitch_usage_aggregate_function(slider_usage_path)
+
+# list of all aggregate dfs
+master_pitch_usage_aggregate_list <- list(changeup_usage_aggregate = changeup_usage_aggregate,
+                                         curveball_usage_aggregate = curveball_usage_aggregate,
+                                         cutter_usage_aggregate = cutter_usage_aggregate,
+                                         fastball_usage_aggregate = fastball_usage_aggregate,
+                                         sinker_usage_aggregate = sinker_usage_aggregate,
+                                         slider_usage_aggregate = slider_usage_aggregate)
+
+# write aggregate dfs into .csv files
+mapply(write.csv, 
+       master_pitch_usage_aggregate_list, 
+       file=paste0(names(master_pitch_usage_aggregate_list),
+                   '.csv'))
+
+# combine aggregate dfs into one master df
+master_pitch_usage_aggregate <- rbind(changeup_usage_aggregate,
+                                      curveball_usage_aggregate,
+                                      cutter_usage_aggregate,
+                                      fastball_usage_aggregate,
+                                      sinker_usage_aggregate,
+                                      slider_usage_aggregate)
+
+# write master df to .csv file
+write.csv(master_pitch_usage_aggregate,
+          "Data/Pitch Usage/Aggregated Files/master_pitch_usage_aggregate.csv",
+          row.names = TRUE)
+
+```
+
+## Pitch Movement Data Aggregation
+
+I'l
+
+```{r pitch movement data aggregation}
+
+pitch_move_aggregate_function <- function(pitch_move_files_path) {
+  
+pitch_move_aggregate <- rbindlist(mapply(c,(list.files(path = pitch_move_files_path,
+                                                       pattern = "*.csv",
+                                                       full.names = TRUE) %>%
+                                              lapply(read.table,
+                                                     header = TRUE,
+                                                     sep = ",",
+                                                     encoding = "UTF-8")),
+                                         (list.files(path = pitch_move_files_path,
+                                                     pattern = "*.csv",
+                                                     full.names = TRUE) %>%
+                                            basename() %>%
+                                            as.list()),
+                                         SIMPLIFY = FALSE),
+                                  fill = T) %>%
+  mutate(pitch = recode(pitch_type_name, Changeup = 'Change', '4-Seamer' = "Fastball")) %>%
+  mutate(player_id = pitcher_id,
+         horizontal_break = pitcher_break_x,
+         vertical_break = pitcher_break_z) %>% 
+  select(-V1) %>% # remove select cols
+  select(year, player_id, last_name, first_name, pitch_hand, 
+         total_pitches, pitch, pitches_thrown,
+         avg_speed, rise, tail, horizontal_break, vertical_break) # reorder cols
+
+return(as.data.frame(pitch_move_aggregate))
+}
+
+# set paths to pitch files
+all_move_path <- "Data/Movement/All Pitches"
+
+# aggregate movement files into dfs
+
+all_move_aggregate <- pitch_move_aggregate_function(all_move_path)
+
+# write master df to .csv file
+write.csv(all_move_aggregate,
+          "Data/Movement/All Pitches/master_pitch_movement_aggregate.csv",
+          row.names = TRUE)
+
+```
+
+
+## Slider Location Data Aggregation
+
+```{r slider location data aggregation}
+
+slider_location_aggregate_function <- function(slider_location_files_path) {
+  
+slider_location_aggregate <- rbindlist(mapply(c,(list.files(path = slider_location_files_path,
+                                                            pattern = "*.csv",
+                                                            full.names = TRUE) %>%
+                                                   lapply(read.table,
+                                                          header = TRUE,
+                                                          sep = ",",
+                                                          encoding = "UTF-8")),
+                                              (list.files(path = slider_location_files_path,
+                                                          pattern = "*.csv",
+                                                          full.names = TRUE) %>%
+                                                 basename() %>%
+                                                 as.list()),
+                                              SIMPLIFY = FALSE),
+                                       fill = T) %>%
+  mutate(year = substr(V1, 1, 4)) %>% # pull year from col V1
+  mutate(pitch = substr(V1, 14, 19)) %>% # pull pitch abr from col V1
+  mutate(zone = substr(V1, 11, 12)) %>% # pull zone from col V1
+  select(-c(pos3_int_start_distance, pos4_int_start_distance,
+            pos5_int_start_distance, pos6_int_start_distance, 
+            pos7_int_start_distance, pos8_int_start_distance, 
+            pos9_int_start_distance, V1)) %>% # remove select cols
+  select(player_name, player_id, year:pitch, zone, pitches:pitch_percent, spin_rate:velocity,
+         release_extension, effective_speed, eff_min_vel, ba:launch_angle,
+         whiffs:takes) # reorder cols
+
+return(as.data.frame(slider_location_aggregate))
+}
+
+# set paths to pitch files
+slider_location_all_path <- "Data/Location/Slider/All"
+
+# aggregate movement files into dfs
+
+slider_location_all_aggregate <- slider_location_aggregate_function(slider_location_all_path)
+
+# write master df to .csv file
+write.csv(slider_location_all_aggregate,
+          "Data/Location/Slider/All/Aggregate Files/master_slider_location_all_aggregate.csv",
+          row.names = TRUE)
+
+```
+
+# Pitch Usage Analysis
+
+## Statistics
+
+```{r pitch usage stats}
+
+library(tidyr)
+
+# aggregate all pitch usage stats
+master_pitch_usage_summary <- master_pitch_usage_aggregate %>% 
+  group_by(year, pitch) %>% 
+  filter(total_pitches > 100) %>%
+  select(-c(player_name, total_pitches, pitch_percent, ba)) %>%
+  summarise(pitch_count = sum(pitches),
+            sum_whiffs = sum(whiffs),
+            sum_swings = sum(swings),
+            sum_takes = sum(takes),
+            sum_abs = sum(abs),
+            sum_hits = sum(hits),
+            mean_spin_rate = weighted.mean(spin_rate, pitches),
+            mean_velocity = weighted.mean(velocity, pitches),
+            mean_release_extension = weighted.mean(release_extension, pitches),
+            mean_effective_speed = weighted.mean(effective_speed, pitches),
+            mean_eff_min_vel = weighted.mean(eff_min_vel, pitches),
+            mean_iso = weighted.mean(iso, pitches),
+            mean_babip = weighted.mean(babip, pitches),
+            mean_slg = weighted.mean(slg, pitches),
+            mean_woba = weighted.mean(woba, pitches),
+            mean_xwoba = weighted.mean(xwoba, pitches),
+            mean_xba = weighted.mean(xba, pitches),
+            mean_launch_speed = weighted.mean(launch_speed, pitches),
+            mean_launch_angle = weighted.mean(launch_angle, pitches)) %>% 
+  mutate(ba = sum_hits / sum_abs,
+         swing_percentage = sum_swings / pitch_count,
+         whiff_percentage = sum_whiffs / sum_swings,
+         contact_rate = (sum_swings - sum_whiffs) / sum_swings,
+         take_percentage = sum_takes / pitch_count)
+
+# save and export
+write.csv(master_pitch_usage_summary,
+          "Data/Pitch Usage/Statistics/master_pitch_usage_summary.csv",
+          row.names = TRUE)
+
+# calculate total number of pitches per year
+total_pitches <- master_pitch_usage_aggregate %>% 
+  group_by(year, pitch) %>%
+  summarise(pitch_count = sum(pitches)) %>% 
+  ungroup() %>% 
+  group_by(year) %>% 
+  summarise(total_pitches = sum(pitch_count)) %>% 
+  slice(rep(1:n(), each = 6)) %>% # rep 6 times to fit future need (see pitch_percentages)
+  as.data.frame()
+
+# calculate pitch usage %s
+
+library(tibble) # add_col fun
+
+master_pitch_usage_percentages <- master_pitch_usage_aggregate %>% 
+  group_by(year, pitch) %>% 
+  filter(total_pitches > 100) %>%
+  summarise(pitch_count = sum(pitches)) %>% 
+  select(year, pitch, pitch_count) %>% 
+  ungroup() %>%
+  add_column(all_pitches = total_pitches$total_pitches) %>% 
+  mutate(pitch_usage = pitch_count/all_pitches)
+
+# write the .csv
+write.csv(master_pitch_usage_percentages,
+          "Data/Pitch Usage/Statistics/master_pitch_usage_percentages.csv",
+          row.names = TRUE)
+
+# calc statcast era statistics - for use in full analyses
+master_statcast_summary <- master_pitch_usage_aggregate %>% 
+  group_by(year, pitch) %>% 
+  filter(total_pitches > 100) %>%
+  select(-c(player_name, total_pitches, pitch_percent, ba)) %>% 
+  drop_na() %>% 
+  summarise(pitch_count = sum(pitches),
+            sum_whiffs = sum(whiffs),
+            sum_swings = sum(swings),
+            sum_takes = sum(takes),
+            sum_abs = sum(abs),
+            sum_hits = sum(hits),
+            mean_spin_rate = weighted.mean(spin_rate, pitches),
+            mean_velocity = weighted.mean(velocity, pitches),
+            mean_release_extension = weighted.mean(release_extension, pitches),
+            mean_effective_speed = weighted.mean(effective_speed, pitches),
+            mean_eff_min_vel = weighted.mean(eff_min_vel, pitches),
+            mean_iso = weighted.mean(iso, pitches),
+            mean_babip = weighted.mean(babip, pitches),
+            mean_slg = weighted.mean(slg, pitches),
+            mean_woba = weighted.mean(woba, pitches),
+            mean_xwoba = weighted.mean(xwoba, pitches),
+            mean_xba = weighted.mean(xba, pitches),
+            mean_launch_speed = weighted.mean(launch_speed, pitches),
+            mean_launch_angle = weighted.mean(launch_angle, pitches)) %>% 
+  mutate(ba = sum_hits / sum_abs,
+         swing_percentage = sum_swings / pitch_count,
+         whiff_percentage = sum_whiffs / sum_swings,
+         contact_rate = (sum_swings - sum_whiffs) / sum_swings,
+         take_percentage = sum_takes / pitch_count)
+
+# calc stats for all recorded data
+master_allyears_summary <- master_pitch_usage_aggregate %>% 
+  group_by(year, pitch) %>% 
+  filter(total_pitches > 100) %>%
+  select(-c(player_name, total_pitches, pitch_percent, ba,
+            spin_rate, release_extension, effective_speed, eff_min_vel,
+            xwoba, xba, launch_speed, launch_angle)) %>% 
+  drop_na() %>% 
+  summarise(pitch_count = sum(pitches),
+            sum_whiffs = sum(whiffs),
+            sum_swings = sum(swings),
+            sum_takes = sum(takes),
+            sum_abs = sum(abs),
+            sum_hits = sum(hits),
+            mean_velocity = weighted.mean(velocity, pitches),
+            mean_iso = weighted.mean(iso, pitches),
+            mean_babip = weighted.mean(babip, pitches),
+            mean_slg = weighted.mean(slg, pitches),
+            mean_woba = weighted.mean(woba, pitches)) %>% 
+  mutate(ba = sum_hits / sum_abs,
+         swing_percentage = sum_swings / pitch_count,
+         whiff_percentage = sum_whiffs / sum_swings,
+         contact_rate = (sum_swings - sum_whiffs) / sum_swings,
+         take_percentage = sum_takes / pitch_count)
+
+# write .csv
+write.csv(master_allyears_summary,
+          "Data/Pitch Usage/Statistics/master_allyears_summary.csv",
+          row.names = TRUE)
+
+str(master_allyears_summary)
+
+```
+
+# Basic visualizations
+
+## Pitch Usage Trends Over Time
+
+```{r pitch usage over time}
+
+library(ggplot2)
+
+pitch_usage_plot <- ggplot(data = master_pitch_usage_percentages,
+                           mapping = aes(x = year,
+                                         y = pitch_usage,
+                                         group = pitch)) +
+  geom_point(aes(color = pitch)) +
+  geom_line(aes(color = pitch)) +
+  custom_theme() +
+  theme(legend.title = element_text(hjust = 0.5, face = "bold"),
+        axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
+        plot.title = element_text(hjust = 0.5)) +
+  labs(title = "Changes in Pitch Usage Over Time",
+       x = "Season",
+       y = "Percentage of Pitches Thrown",
+       color = "Pitch")
+
+pitch_usage_plot
+
+```
+
+Fastball and sinker have decreased substantially. The slider has gone up A LOT, especially since 2020.
+
+Let's look at this in a table that states the % change over time from time X to time Y. I'm going to write it as a function in case I ever want to look back at this more.
+
+```{r pitch usage change table}
+
+library(scales) # percentages
+library(reactablefmtr) # pretty tables
+
+pitch_percentage_change_function <- function(start_year, end_year) {
+  
+  library(scales) # percentages
+  library(reactablefmtr) # pretty tables
+  
+  pitch_percentage_changes <- master_pitch_usage_percentages %>% 
+    filter(between(year, start_year, end_year)) %>% 
+    group_by(pitch) %>% 
+    mutate(usage_change = pitch_usage - pitch_usage[1]) %>% 
+    mutate(usage_change_percent = (pitch_usage / pitch_usage[1])-1) %>%
+    filter(year == end_year)
+  
+  pitch_percentage_changes_table <- pitch_percentage_changes %>% 
+    select(pitch, usage_change_percent) %>% 
+    rename("Pitch" = pitch,
+           'Percent Change' = usage_change_percent) %>% 
+    as.data.frame()
+
+  pitch_percentage_changes_table <- reactable(
+  pitch_percentage_changes_table,
+  pagination = FALSE,
+  defaultSorted = 'Percent Change',
+  defaultSortOrder = "asc",
+  columns = (list(Pitch = colDef(width = 100),
+                  'Percent Change' = colDef(width = 200,
+                                    align = "center"))),
+  defaultColDef = colDef(cell = data_bars(pitch_percentage_changes_table,
+                                          number_fmt = scales::percent,
+                                          max_value = 1,
+                                          text_position = "outside-end",
+                                          fill_color = c("red", "blue")))) %>% 
+  add_title("Change in Pitch Usage")
+  
+  return(pitch_percentage_changes_table)
+  
+}
+
+pitch_percentage_change_2015to2022 <- pitch_percentage_change_function(2015, 2022) %>% 
+  add_subtitle("From 2015 to 2022",
+               font_weight = "normal")
+
+pitch_percentage_change_2015to2022
+
+```
+
+So sinker and fastball usage has declined while cutter and slider usage has increased substantially. Interestingly, both of these pitches "appear" as fastballs then tail away from the pitcher's hand side.
+
+Why has slider usage increased so much? Let's look at how it's pitch outcomes compare with other pitches.
+
+## Pitch Outcomes
+
+### Swings & Contact
+
+How often do batters swing at each pitch? I hypothesize that batters swing at sliders more often than other pitches because they look similar to a fastball. I also hypothesize that batters miss (i.e., lower contact rate) against sliders more often than other pitches because of the deceptive breaking movement from the pitcher's hand.
+
+```{r swings and contact}
+
+library(ggpubr)
+
+swing_plot <- ggplot(data = master_allyears_summary,
+                     mapping = aes(x = year,
+                                   y = swing_percentage,
+                                   group = pitch)) +
+  geom_line(aes(color = pitch)) +
+  geom_point(aes(color = pitch)) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1, size = 8)) +
+  labs(title = "Swing Rate by Pitch",
+       y = "Swing Rate",
+       x = "Season",
+       color = "Pitch")
+
+swing_plot
+
+contact_plot <- ggplot(data = master_allyears_summary,
+                       mapping = aes(x = year,
+                                     y = contact_rate,
+                                     group = pitch)) +
+  geom_line(aes(color = pitch)) +
+  geom_point(aes(color = pitch)) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1, size = 8)) +
+  labs(title = "Contact Rate by Pitch",
+       y = "Contact Rate",
+       x = "Season",
+       color = "Pitch")
+
+contact_plot
+
+swing_contact_plot <- ggarrange(swing_plot,
+                                contact_plot,
+                                ncol = 2,
+                                nrow = 1,
+                                common.legend = TRUE,
+                                legend = "right")
+
+swing_contact_plot
+
+```
+
+Hmm. So batter's swing at sliders, cutters, and changeups the most. These are all anecdotally the pitches that look the most like fastballs. Cutters and sliders break away from the pitcher's hand and are similar in speed to fastballs, while changeups drop and fade away from the pitcher's hand and are slower.
+
+More swings is only good if it leads to a favorable outcome for the pitcher. The best swing outcome is a miss because any time a ball is put in play the batter has a chance to get on base. Interestingly, contact rates for sliders are the lowest of any pitch. So this means that batters swing at sliders more often than many other pitches but miss with their swings more often than any other pitch. If your goal is to maximize swings and misses, than throwing the slider more often seems to be the best approach.
+
+### Contact quality
+
+But what happens when a batter does make contact? If the contact that does occur is good, the benefit of missed swings against sliders might be canceled by the risk of more hits.
+
+```{r batting average plot}
+
+library(ggplot2)
+
+ba_plot <- ggplot(data = master_statcast_summary,
+                  mapping = aes(x = year,
+                                y = ba,
+                                group = pitch)) +
+  geom_line(aes(color = pitch)) +
+  geom_point(aes(color = pitch)) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  labs(title = "Batting Avg. by Pitch",
+       y = "Batting Average",
+       x = "Season",
+       color = "Pitch")
+
+ba_plot
+
+xba_plot <- ggplot(data = master_statcast_summary,
+                  mapping = aes(x = year,
+                                y = mean_xba,
+                                group = pitch)) +
+  geom_line(aes(color = pitch)) +
+  geom_point(aes(color = pitch)) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  labs(y = "Expected Batting Average",
+       x = "Season",
+       color = "Pitch")
+
+xba_plot
+
+babip_plot <- ggplot(data = master_statcast_summary,
+                     mapping = aes(x = year,
+                                   y = mean_babip,
+                                   group = pitch)) +
+  geom_line(aes(color = pitch)) +
+  geom_point(aes(color = pitch)) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45)) +
+  labs(y = "BABIP",
+       x = "Season",
+       color = "Pitch")
+
+babip_plot
+
+batting_averages_plot <- ggarrange(ba_plot,
+                                   xba_plot,
+                                   babip_plot,
+                                   ncol = 3,
+                                   nrow = 1,
+                                   common.legend = TRUE,
+                                   legend = "right")
+
+batting_averages_plot
+
+```
+
+So batters have the lowest batting average and expected batting average against sliders. These metrics include strikeouts, so when you remove those and look only at batting average on balls in play you see that only the changeup has a lower BABIP.
+
+I can even reverse calculate the strikeout rate against all the pitch types by subtracting the BA from BABIP, since the only outcomes that aren't included in BABIP are strikeouts (and walks but that's a separate topic).
+
+```{r strikeouts calc from BABIP - BA}
+
+strikeout_rate_table <- master_statcast_summary %>% 
+  mutate(strikeout_rate = mean_babip - ba) %>% 
+  select(year, pitch, strikeout_rate) %>% 
+  pivot_wider(names_from = year,
+              values_from = strikeout_rate)
+
+strikeout_rate_table <- reactable(strikeout_rate_table,
+                                  pagination = FALSE,
+                                  defaultColDef = colDef(cell = data_bars(strikeout_rate_table,
+                                                                          number_fmt = scales::percent,
+                                                                          text_position = "above",
+                                                                          round_edges = TRUE,
+                                                                          max_value = 0.1,
+                                                                          fill_color = "red")))
+  
+strikeout_rate_table
+
+```
+
+This aligns with the BA plots - batters strikeout the most against sliders and curveballs. But they swing at sliders much more often, so strikeout totals are likely higher.
+
+### Power
+
+When batters make contact, how successful are they? Are they getting singles, doubles, triples, HRs?
+
+```{r slugging plot}
+
+slg_plot <- ggplot(data = master_statcast_summary,
+                     mapping = aes(x = year,
+                                   y = mean_slg,
+                                   group = pitch)) +
+  geom_point(aes(color = pitch)) +
+  geom_line(aes(color = pitch)) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  labs(x = "Season",
+       y = "Slugging Percentage",
+       color = "Pitch")
+
+slg_plot
+
+```
+
+Batters hit for less power against sliders than any other pitch.
+
+### Exit velocity
+
+```{r exit velo}
+
+library(ggplot2)
+
+exit_velo_plot <- ggplot(data = master_statcast_summary,
+                         mapping = aes(x = year,
+                                       group = pitch,
+                                       y = mean_launch_speed)) +
+  geom_line(aes(color = pitch)) +
+  geom_point(aes(color = pitch)) +
+  theme_minimal() +
+  theme(legend.box.background = element_rect(colour = "black"),
+        legend.title = element_text(hjust = 0.5, face = "bold"),
+        axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  labs(title = "Exit Velo. By Pitch",
+       x = "Season",
+       y = "Exit Velocity (mph)",
+       color = "Pitch")
+
+exit_velo_plot
+
+BA_exitvelo_plot <- ggarrange(ba_plot,
+                              exit_velo_plot,
+                              ncol = 2,
+                              nrow = 1,
+                              common.legend = TRUE,
+                              legend = "right")
+BA_exitvelo_plot
+
+```
+
+Similar to slugging. Batters make weak contact against sliders. Only changeups result in lower exit velocity.
+
+# What makes a slider effective?
+
+## Where are we so far?
+
+So we've seen that slider usage has increased substantially over the past 15 years. This rise is likely due to the fact that batters swing at a lot of sliders and miss a lot. This correlates with the high strikeout rates that I reverse calculated. When batters do make contact, it results in fewer hits and fewer extra bases. 
+
+## Where are we going?
+
+Why do batters suck against the slider? Sliders are often nearly as fast as fastballs but move.
+
+Possibilities:
+- The spin rate mirror a fastball too, so that it looks like a fastball until it suddenly moves
+- It is released closer to the plate so that the batter has less time to react compared to other pitches of similar speed
+- It breaks. Horizontally and vertically. A lot.
+- It is maybe particularly effective in different parts of the strike zone
+
+## Pitch Factor Analysis
+
+### Trim down the dataset
+
+```{r master file for statcast stats}
+
+master_statcast_aggregate <- master_pitch_usage_aggregate %>% 
+  filter(year > 2014,
+         total_pitches > 99) %>% 
+  mutate(whiff_percentage = whiffs / swings)
+
+```
+
+### Velocity
+
+```{r pitch velocity}
+
+velocity_whiffs_plot <- ggplot(data = master_statcast_aggregate,
+                               mapping = aes(x = velocity,
+                                             y = whiff_percentage)) +
+  geom_point(aes(color = pitch)) +
+  geom_smooth(method = "lm",
+              se = FALSE,
+              fullrange = TRUE,
+              color = "black") +
+  theme_minimal() +
+  theme(legend.box.background = element_rect(colour = "black"),
+        legend.title = element_text(hjust = 0.5, face = "bold"),
+        axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  facet_wrap(vars(pitch)) +
+  labs(title = "Influence of Pitch Velocity on Whiff Likelihood",
+       x = "Velocity (mph)",
+       y = "Whiffs (%)",
+       color = "Pitch")
+
+velocity_whiffs_plot
+
+```
+
+Increased velocity is correlated to higher whiff percentages for all pitches - though the positive correlation is VERY small for changeup. It is also not too large fror sliders, but it is positive.
+
+
+### Spin Rate
+
+```{r spin rate vs whiff rate}
+
+spin_whiffs_plot <- ggplot(data = master_statcast_aggregate,
+                           mapping = aes(x = spin_rate,
+                                         y = whiff_percentage)) +
+  geom_point(aes(color = pitch)) +
+  geom_smooth(method = "lm",
+              se = FALSE,
+              fullrange = TRUE,
+              color = "black") +
+  theme_minimal() +
+  theme(legend.box.background = element_rect(colour = "black"),
+        legend.title = element_text(hjust = 0.5, face = "bold"),
+        axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  facet_wrap(vars(pitch)) +
+  labs(title = "Influence of Spin Rate on Whiff Likelihood",
+       x = "Spin Rate (rpm)",
+       y = "Whiffs (%)",
+       color = "Pitch")
+
+spin_whiffs_plot
+
+```
+
+Higher spin rates are associated with higher whiff rates for all pitches. This is likely because spin rate increases movement, but might also be that high spin rates are harder to visually detect by the batter for pitch identification. The slider does not lead the pack in this comparison, but there is an overall positive correlation.
+
+### Release extension
+
+```{r release vs whiff rate}
+
+release_whiffs_plot <- ggplot(data = master_statcast_aggregate,
+                              mapping = aes(x = release_extension,
+                                            y = whiff_percentage)) +
+  geom_point(aes(color = pitch)) +
+  geom_smooth(method = "lm",
+              se = FALSE,
+              fullrange = TRUE,
+              color = "black") +
+  theme_minimal() +
+  theme(legend.box.background = element_rect(colour = "black"),
+        legend.title = element_text(hjust = 0.5, face = "bold"),
+        axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  facet_wrap(vars(pitch)) +
+  labs(title = "Influence of Release Extension on Whiff Likelihood",
+       x = "Release Extension (ft)",
+       y = "Whiffs (%)",
+       color = "Pitch")
+
+release_whiffs_plot
+
+```
+
+Release extension is generally positively correlated with whiff percentage. Interestingly, this seems to have the least effect with sliders.
+
+### Break
+
+```{r break data aggregation}
+
+all_move_aggregate <- all_move_aggregate %>% 
+  group_by(player_id, year, pitch) %>% 
+  mutate(year = as.character(year))
+
+statcast_move_aggregate <- master_statcast_aggregate %>% 
+  group_by(player_id, year, pitch) %>% 
+  inner_join(all_move_aggregate,
+             by = c('player_id' = 'player_id',
+                    'year' = 'year',
+                    'pitch' = 'pitch')) %>% 
+  select(-c(last_name, first_name, total_pitches.y, pitches_thrown, avg_speed)) %>% 
+  rename(total_pitches = total_pitches.x) %>% 
+  select(player_id, player_name, pitch_hand, year:whiff_percentage, rise:vertical_break)
+
+write.csv(statcast_move_aggregate,
+          "Data/Key Aggregates/Statcast and Movement Data.csv",
+          row.names = TRUE)
+
+```
+
+
+``` {r horizontal break vs whiffs}
+
+horbreaks_whiffs_plot <- ggplot(data = statcast_move_aggregate,
+                                mapping = aes(x = horizontal_break,
+                                              y = whiff_percentage)) +
+  geom_point(aes(color = pitch)) +
+  geom_smooth(method = "lm",
+              se = FALSE,
+              fullrange = TRUE,
+              color = "black") +
+  theme_minimal() +
+  theme(legend.box.background = element_rect(colour = "black"),
+        legend.title = element_text(hjust = 0.5, face = "bold"),
+        axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  facet_wrap(vars(pitch)) +
+  labs(title = "Influence of Horizontal Break on Whiff Likelihood",
+       x = "Horizontal Break (in)",
+       y = "Whiffs (%)",
+       color = "Pitch")
+
+horbreaks_whiffs_plot
+
+```
+
+Interestingly, the amount of horizontal break isn't correlated with whiff percentage.
+
+``` {r vertical break vs whiffs}
+
+verbreaks_whiffs_plot <- ggplot(data = statcast_move_aggregate,
+                                mapping = aes(x = vertical_break,
+                                              y = whiff_percentage)) +
+  geom_point(aes(color = pitch)) +
+  geom_smooth(method = "lm",
+              se = FALSE,
+              fullrange = TRUE,
+              color = "black") +
+  theme_minimal() +
+  theme(legend.box.background = element_rect(colour = "black"),
+        legend.title = element_text(hjust = 0.5, face = "bold"),
+        axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  facet_wrap(vars(pitch)) +
+  labs(title = "Influence of Vertical Break on Whiff Likelihood",
+       x = "Vertical Break (in)",
+       y = "Whiffs (%)",
+       color = "Pitch")
+
+verbreaks_whiffs_plot
+
+```
+
+Vertical break seems to have a bit more of an effect.
+
+``` {r rise vs whiffs}
+
+rise_whiffs_plot <- ggplot(data = statcast_move_aggregate,
+                           mapping = aes(x = rise,
+                                         y = whiff_percentage)) +
+  geom_point(aes(color = pitch)) +
+  geom_smooth(method = "lm",
+              se = FALSE,
+              fullrange = TRUE,
+              color = "black") +
+  theme_minimal() +
+  theme(legend.box.background = element_rect(colour = "black"),
+        legend.title = element_text(hjust = 0.5, face = "bold"),
+        axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  facet_wrap(vars(pitch)) +
+  labs(title = "Influence of Rise on Whiff Likelihood",
+       x = "Rise (in)",
+       y = "Whiffs (%)",
+       color = "Pitch")
+
+rise_whiffs_plot
+
+```
+
+Whoa. Rise definitely influences whiff percentage of sliders. It seems like sinker curveball and cutter suffer from rise.
+
+``` {r tail vs whiffs}
+
+tail_whiffs_plot <- ggplot(data = statcast_move_aggregate,
+                           mapping = aes(x = tail,
+                                         y = whiff_percentage)) +
+  geom_point(aes(color = pitch)) +
+  geom_smooth(method = "lm",
+              se = FALSE,
+              fullrange = TRUE,
+              color = "black") +
+  theme_minimal() +
+  theme(legend.box.background = element_rect(colour = "black"),
+        legend.title = element_text(hjust = 0.5, face = "bold"),
+        axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  xlim(-250, 250) +
+  facet_wrap(vars(pitch)) +
+  labs(title = "Influence of Tail on Whiff Likelihood",
+       x = "Tail (in)",
+       y = "Whiffs (%)",
+       color = "Pitch")
+
+tail_whiffs_plot
+
+```
+
+### Location
+
+I need to pull location data for all pitches
+
+```{r slider location}
+
+slider_location_all_aggregate <- slider_location_all_aggregate %>%
+  mutate(whiff_percentage = whiffs / swings) %>% 
+  mutate(zone = recode(zone, 
+                       '01' = 'Top Left', '02' = 'Top Center', '03' = 'Top Right',
+                       '04' = 'Middle Left', '05' = 'Middle Center', '06' = 'Middle Right',
+                       '07' = 'Bottom Left', '08' = 'Bottom Center', '09' = 'Bottom Right',
+                       '10' = 'Outside Top Left', '12' = 'Outside Top Right',
+                       '13' = 'Outside Bottom Left', '14' = 'Outside Bottom Right'))
+
+slider_zone_plot <- ggplot(data = slider_location_all_aggregate,
+                           mapping = aes(x = factor(zone,
+                                                    level = c("Outside Top Left", "Outside Top Right",
+                                                              "Top Left", "Top Center", "Top Right",
+                                                              "Middle Left", "Middle Center", "Middle Right",
+                                                              "Bottom Left", "Bottom Center", "Bottom Right",
+                                                              "Outside Bottom Left", "Outside Bottom Right")),
+                                         y = whiff_percentage)) +
+  geom_point(alpha = 0.1) +
+  geom_jitter(alpha = 0.1) +
+  stat_summary(geom = "point",fun.y = "mean",
+               col = "red", fill = "red",
+               size = 5, shape = 19, alpha = 1) +
+  stat_summary(fun.data = mean_se, geom = "errorbar",
+               col = "red", fill = "red", alpha = 1) +
+  theme_minimal() +
+  theme(legend.box.background = element_rect(colour = "black"),
+        legend.title = element_text(hjust = 0.5, face = "bold"),
+        axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  labs(title = "Influence of Pitch Location on Whiff Likelihood",
+       x = "Location Zone",
+       y = "Whiffs (%)",
+       color = "Zone")
+
+slider_zone_plot
+
+```
+
+There isn't much difference between pitches in the top and bottom of the zone or outside top. Whiffs are very infrequent in the middle. Whiffs are much higher when outside and below the zone.
+
+Let's see if there's any difference by year
+
+```{r slider zone by year plot}
+
+slider_zone_year_plot <- slider_zone_plot + 
+facet_wrap(vars(year))
+
+slider_zone_year_plot
+
+```
+
+Nope. The trend is pretty much the same.
+
+Let's make one condensed figure that highlights all the IVs that influence whiff percentage for sliders.
+
+```{r slider total image}
+
+statcast_slider_move_df <- statcast_move_aggregate %>% 
+  filter(pitch == "Slider")
+
+slider_velo_plot <- ggplot(data = statcast_slider_move_df,
+                               mapping = aes(x = velocity,
+                                             y = whiff_percentage)) +
+  geom_point(aes(color = "magenta")) +
+  geom_smooth(method = "lm",
+              se = FALSE,
+              fullrange = TRUE,
+              color = "black") +
+  theme_minimal() +
+  theme(legend.box.background = element_rect(colour = "black"),
+        legend.title = element_text(hjust = 0.5, face = "bold"),
+        axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  labs(title = "Influence of Pitch Velocity on Whiff Likelihood",
+       x = "Velocity (mph)",
+       y = "Whiffs (%)")
+
+slider_spin_plot <- ggplot(data = statcast_slider_move_df,
+                               mapping = aes(x = spin_rate,
+                                             y = whiff_percentage)) +
+  geom_point(aes(color = "magenta")) +
+  geom_smooth(method = "lm",
+              se = FALSE,
+              fullrange = TRUE,
+              color = "black") +
+  theme_minimal() +
+  theme(legend.box.background = element_rect(colour = "black"),
+        legend.title = element_text(hjust = 0.5, face = "bold"),
+        axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  labs(title = "Influence of Spin Rate on Whiff Likelihood",
+       x = "Spin Rate (rpm)",
+       y = "Whiffs (%)")
+
+slider_release_plot <- ggplot(data = statcast_slider_move_df,
+                              mapping = aes(x = release_extension,
+                                            y = whiff_percentage)) +
+  geom_point(aes(color = "magenta")) +
+  geom_smooth(method = "lm",
+              se = FALSE,
+              fullrange = TRUE,
+              color = "black") +
+  theme_minimal() +
+  theme(legend.box.background = element_rect(colour = "black"),
+        legend.title = element_text(hjust = 0.5, face = "bold"),
+        axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  labs(title = "Influence of Release Extension on Whiff Likelihood",
+       x = "Release Extension (ft)",
+       y = "Whiffs (%)")
+
+slider_horizontal_plot <- ggplot(data = statcast_slider_move_df,
+                                 mapping = aes(x = horizontal_break,
+                                               y = whiff_percentage)) +
+  geom_point(aes(color = "magenta")) +
+  geom_smooth(method = "lm",
+              se = FALSE,
+              fullrange = TRUE,
+              color = "black") +
+  theme_minimal() +
+  theme(legend.box.background = element_rect(colour = "black"),
+        legend.title = element_text(hjust = 0.5, face = "bold"),
+        axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  labs(title = "Influence of Hor. Movement on Whiff Likelihood",
+       x = "Horizontal Break (in)",
+       y = "Whiffs (%)")
+
+slider_vertical_plot <- ggplot(data = statcast_slider_move_df,
+                               mapping = aes(x = vertical_break,
+                                             y = whiff_percentage)) +
+  geom_point(aes(color = "magenta")) +
+  geom_smooth(method = "lm",
+              se = FALSE,
+              fullrange = TRUE,
+              color = "black") +
+  theme_minimal() +
+  theme(legend.box.background = element_rect(colour = "black"),
+        legend.title = element_text(hjust = 0.5, face = "bold"),
+        axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  labs(title = "Influence of Ver. Movement on Whiff Likelihood",
+       x = "Vertical Break (in)",
+       y = "Whiffs (%)")
+
+slider_tail_plot <- ggplot(data = statcast_slider_move_df,
+                           mapping = aes(x = tail,
+                                         y = whiff_percentage)) +
+  geom_point(aes(color = "magenta")) +
+  geom_smooth(method = "lm",
+              se = FALSE,
+              fullrange = TRUE,
+              color = "black") +
+  theme_minimal() +
+  theme(legend.box.background = element_rect(colour = "black"),
+        legend.title = element_text(hjust = 0.5, face = "bold"),
+        axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  labs(title = "Influence of Tail on Whiff Likelihood",
+       x = "Horizontal Break (in)",
+       y = "Whiffs (%)")
+
+slider_rise_plot <- ggplot(data = statcast_slider_move_df,
+                           mapping = aes(x = rise,
+                                         y = whiff_percentage)) +
+  geom_point(aes(color = "magenta")) +
+  geom_smooth(method = "lm",
+              se = FALSE,
+              fullrange = TRUE,
+              color = "black") +
+  theme_minimal() +
+  theme(legend.box.background = element_rect(colour = "black"),
+        legend.title = element_text(hjust = 0.5, face = "bold"),
+        axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  labs(title = "Influence of Rise on Whiff Likelihood",
+       x = "Horizontal Break (in)",
+       y = "Whiffs (%)")
+
+slider_factor_plot <- ggarrange(slider_velo_plot, slider_spin_plot, slider_release_plot,
+                                slider_horizontal_plot, slider_vertical_plot,
+                                slider_rise_plot, slider_tail_plot,
+                                ncol = 3,
+                                nrow = 3)
+
+slider_factor_plot
+
+```
+
+# Modeling
+
+OK. So pitch factors like velocity, spin rate, release extension, movement, and location all seem to contribute to whether or not a batter misses when they swing. Let's model this.
+
+## Model Data Aggregation
+
+I need to do a final data aggregation - and this one will be a little complicated. I need to merge the movement data onto the pitch location data aggregate that I have. I do not have pitch movement data that is location-specific, so I will need to use the pitch movement that I have been using and apply it to all the locations. This is a clear limitation of my analysis but will provide more insight than not including it.
+
+I am also going to filter out any samples with fewer than 9 swings per zone. These sample sizes are very small compared to some who threw 100+ in a given zone.
+
+```{r model data aggregation}
+
+slider_move_aggregate <- all_move_aggregate %>% 
+  filter(pitch == 'Slider') %>% # keep only slider
+  group_by(player_id, year)
+
+slider_move_location_stats_aggregate <- slider_location_all_aggregate %>% 
+  group_by(player_id, year, zone) %>% 
+  inner_join(slider_move_aggregate,
+             by = c('player_id' = 'player_id',
+                    'year' = 'year',
+                    'pitch' = 'pitch')) %>% 
+  select(-c(last_name, first_name, 
+            total_pitches.y, pitches_thrown, avg_speed)) %>% 
+  rename(total_pitches = total_pitches.x) %>% 
+  select(player_id, player_name, pitch_hand, pitch, year, zone,
+         total_pitches, rise:vertical_break, spin_rate:whiff_percentage) %>% 
+  filter(swings > 9) %>% # remove tiny sample sizes
+  mutate(rise = as.numeric(rise),
+         tail = as.numeric(tail),
+         spin_rate = as.numeric(spin_rate))
+
+slider_move_location_stats_select <- slider_move_location_stats_aggregate %>% 
+  select(player_id, year, whiff_percentage, 
+         velocity, spin_rate, release_extension, horizontal_break, vertical_break,
+         rise, tail, zone, whiffs, swings) %>% 
+  drop_na()
+
+```
+
+So the data here is going to be slightly different than the data previously used in the location analyses and the movement analyses - because this new dataset is merged by all the common player_id and year entries.
+
+Now let's fit a model with all of the IVs that I've identified. Since whiffs is count data, I'll fit a glm with a Poisson distribution. The standard link for a Poisson is log.
+
+```{r model}
+
+slider_whiff_model <- lm(whiff_percentage ~ velocity + spin_rate + 
+                         release_extension + horizontal_break + vertical_break 
+                         + rise + tail + zone,
+                         data = slider_move_location_stats_aggregate)
+
+library(performance)
+
+check_model(slider_whiff_model)
+
+slider_whiff_glm <- glm(whiffs ~ velocity + spin_rate + 
+                        release_extension + horizontal_break + vertical_break 
+                        + rise + tail + zone + offset(log(swings)),
+                        family = quasipoisson(link = "log"),
+                        data = slider_move_location_stats_select)
+
+check_overdispersion(slider_whiff_glm)
+
+check_model(slider_whiff_glm)
+
+```
+
+
+
+```{r var correlations}
+
+slider_move_location_stats_aggregate %>%
+  as.data.frame() %>%  
+  mutate(zone = as.numeric(zone),
+         spin_rate = as.numeric(spin_rate),
+         release_extension = as.numeric(release_extension)) %>% 
+  select(velocity, spin_rate, release_extension,
+         horizontal_break, vertical_break, rise, tail, zone) %>%                   # select the variables
+  as.matrix() %>%                   
+  cor()
+
+```
+
+It's pretty clear there is no collinearity between any of the IVs. I'm comfortable with my model going forward.
+
+Now let's analyze the model.
+
+```{r model analysis}
+
+summary(slider_whiff_model)
+r2(slider_whiff_model)
+r2(slider_whiff_glm)
+
+```
+
+The only locations that increase whiff likelihood are outside bottom right, outside bottom left, and outside top left. Basically, don't throw pitches in the zone. But make them look like they're going to be in the zone.
+
+All pitch factors except tail increase whiff percentage. Vertical break has the largest effect, followed by velocity, release extension, and rise.
+
+Let's visualize this.
+
+I'm going to start by looking at zone.
+
+```{r zone visreg}
+
+library(visreg) # for visualizing model
+library(ggplot2) # for plotting features
+library(ggpubr) # for combining plotting objects
+
+zone_visreg <- visreg(slider_whiff_model,
+                      "zone",
+                      gg = TRUE,
+                      line.par = list(col = "red",
+                                      alpha = 1)) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  labs(title = "Influence of Pitch Location",
+       subtitle = "On Whiff Likelihood",
+       x = "Pitch Location",
+       y = "Whiff Percentage")
+
+zone_visreg
+
+```
+
+Throwing a slider in the middle of the plate is bad. Throwing it low and outside the zone is best - particularly to the right. This is likely because most pitchers and batters are righties so the slider breaks down and away from the batter in this zone.
+
+```{r velo visreg}
+
+library(visreg)
+library(ggforce)
+
+velo_visreg_byzone <- visreg(slider_whiff_glm,
+                             "velocity",
+                             by = "zone",
+                             gg = TRUE,
+                             partial = FALSE,
+                             rug = FALSE,
+                             line.par = list(col = "black",
+                                             alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1, size = 6),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 3) +
+  labs(title = "Influence of Velocity on Whiffs",
+       x = "Velocity (mph)",
+       y = "Whiffs",
+       color = "Pitch Location")
+
+velo_visreg_byzone
+
+
+```
+
+Uptrend in whiff percentage as velocity increases.
+
+```{r spin rate visreg}
+
+spin_visreg_byzone <- visreg(slider_whiff_glm,
+                             "spin_rate",
+                             by = "zone",
+                             gg = TRUE,
+                             partial = FALSE,
+                             rug = FALSE,
+                             line.par = list(col = "black",
+                                             alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1, size = 6),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 3) +
+  labs(title = "Influence of Spin Rate on Whiffs",
+       x = "Spin Rate (rpm)",
+       y = "Whiffs",
+       color = "Pitch Location")
+
+spin_visreg_byzone
+
+```
+
+```{r release visreg}
+
+release_visreg_byzone <- visreg(slider_whiff_glm,
+                      "release_extension",
+                      by = "zone",
+                      gg = TRUE,
+                      partial = FALSE,
+                      rug = FALSE,
+                      line.par = list(col = "black",
+                                      alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1, size = 6),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 3) +
+  labs(title = "Influence of Release Extension on Whiffs",
+       x = "Release Extension (ft)",
+       y = "Whiffs",
+       color = "Pitch Location")
+
+release_visreg_byzone
+
+```
+
+
+
+```{r horizontal break visreg}
+
+horizontal_break_visreg_byzone <- visreg(slider_whiff_glm,
+                                         "horizontal_break",
+                                         by = "zone",
+                                         gg = TRUE,
+                                         partial = FALSE,
+                                         rug = FALSE,
+                                         line.par = list(col = "black",
+                                                         alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1, size = 6),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 3) +
+  labs(title = "Influence of Horizontal Break on Whiffs",
+       x = "Horizontal Break (in)",
+       y = "Whiffs",
+       color = "Pitch Location")
+
+horizontal_break_visreg_byzone
+
+```
+
+```{r vertical break visreg}
+
+vertical_break_visreg_byzone <- visreg(slider_whiff_glm,
+                                       "vertical_break",
+                                        by = "zone",
+                                        gg = TRUE,
+                                        partial = FALSE,
+                                        rug = FALSE,
+                                        line.par = list(col = "black",
+                                                        alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1, size = 6),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 3) +
+  labs(title = "Influence of Vertical Break on Whiffs",
+       x = "Vertical Break (in)",
+       y = "Whiffs",
+       color = "Pitch Location")
+vertical_break_visreg_byzone
+
+```
+
+```{r tail break visreg}
+
+library(visreg)
+library(ggplot2)
+library(ggforce)
+
+tail_break_visreg_byzone <- visreg(slider_whiff_glm,
+                                   "tail",
+                                    by = "zone",
+                                    gg = TRUE,
+                                    partial = FALSE,
+                                    rug = FALSE,
+                                    line.par = list(col = "black",
+                                                    alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1, size = 6),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 3) +
+  labs(title = "Influence of Pitch Tail on Whiffs",
+       x = "Tail (in)",
+       y = "Whiffs",
+       color = "Pitch Location")
+
+tail_break_visreg_byzone
+
+```
+
+```{r rise break visreg}
+
+rise_break_visreg_byzone <- visreg(slider_whiff_glm,
+                                   "rise",
+                                   by = "zone",
+                                   gg = TRUE,
+                                   partial = FALSE,
+                                   rug = FALSE,
+                                   line.par = list(col = "black",
+                                                   alpha = 1)) +
+  geom_point(aes(color = zone),
+             size = 1, alpha = 0.1) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1, size = 6),
+        legend.position = "none") +
+  facet_grid_paginate(~factor(zone),
+                      ncol = 3) +
+  labs(title = "Influence of Pitch Rise on Whiffs",
+       x = "Rise (in)",
+       y = "Whiffs",
+       color = "Pitch Location")
+
+rise_break_visreg_byzone
+
+```
+
+
+
+
+
+
+
+

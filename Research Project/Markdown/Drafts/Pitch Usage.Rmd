@@ -1,0 +1,308 @@
+---
+title: "Pitch Usage"
+author: "Nathan Strozewski"
+date: "2022-11-30"
+output: html_document
+---
+
+```{r custom_theme}
+
+custom_theme <- function(){ 
+  font <- "Helvetica" # font selection
+    
+    theme_minimal() %+replace% # theme based on minimal with following replacements
+    
+    theme(
+      
+      panel.grid.major = element_blank(), # leave grids and axis ticks blank
+      panel.grid.minor = element_blank(),    
+      axis.ticks = element_blank(),
+      axis.line = element_line(color = "black",
+                               size = 1),
+      panel.border = element_rect(color = "black",
+                                  fill=NA,
+                                  size=1),
+      plot.title = element_text(family = font,            
+                   size = 20,                
+                   face = 'bold',            
+                   hjust = 0.5, # move title to center horizontally
+                   vjust = 2), # move title up a wee bit
+      plot.subtitle = element_text(         
+                   family = font,           
+                   size = 15,
+                   hjust = 0.5),               
+      plot.caption = element_text(           
+                   family = font,           
+                   size = 10,                 
+                   hjust = 1), # put caption in right corner
+      axis.title = element_text(             
+                   family = font,
+                   face = 'italic',
+                   size = 15),               
+      axis.text = element_text(              
+                   family = font,            
+                   size = 10),               
+      axis.text.x = element_text(            
+                    margin = margin(t = 2, # top
+                                    r = 2, # right
+                                    b = 2, # bottom
+                                    l = 2)) # left
+    )
+}
+
+```
+
+```{r pitch_files}
+
+library(dplyr) # data manip
+library(data.table) # creating dfs
+
+# function to compile .csv files per pitch and organize
+pitch_aggregate_function <- function(pitch_files_path) {
+  
+pitch_aggregate <- rbindlist(mapply(c,(list.files(path = pitch_files_path,
+                                                  pattern = "*.csv",
+                                                  full.names = TRUE) %>%
+                                         lapply(read.table,
+                                                  header = TRUE,
+                                                  sep = ",",
+                                                  encoding = "UTF-8")),
+                                    (list.files(path = pitch_files_path,
+                                                pattern = "*.csv",
+                                                full.names = TRUE) %>%
+                                       basename() %>%
+                                       as.list()),
+                                    SIMPLIFY = FALSE),
+                             fill = T) %>% 
+  mutate(year = substr(V1, 1, 4)) %>% # pull year from col V1
+  mutate(pitch = substr(V1, 6, 9)) %>% # pull pitch abr from col V1
+  mutate(pitch = recode(pitch, Chan = 'Change', Cutt = 'Cutter', Curv =  'Curveball',
+                        Fast = 'Fastball', Sink = 'Sinker', Slid = 'Slider')) %>% 
+  select(-c(player_id, pos3_int_start_distance, pos4_int_start_distance,
+            pos5_int_start_distance, pos6_int_start_distance, 
+            pos7_int_start_distance, pos8_int_start_distance, 
+            pos9_int_start_distance, V1)) %>% # remove select cols
+  select(player_name, year:pitch, pitches:pitch_percent, spin_rate:velocity,
+         release_extension, effective_speed, eff_min_vel, ba:launch_angle,
+         whiffs:takes) # reorder cols
+  
+return(as.data.frame(pitch_aggregate))
+} 
+
+# set paths to pitch files
+changeup_path <- "Data/All Pitch Tracking/Pitch Usage/Change"
+curveball_path <- "Data/All Pitch Tracking/Pitch Usage/Curveball"
+cutter_path <- "Data/All Pitch Tracking/Pitch Usage/Cutter"
+fastball_path <- "Data/All Pitch Tracking/Pitch Usage/Fastball"
+sinker_path <- "Data/All Pitch Tracking/Pitch Usage/Sinker"
+slider_path <- "Data/All Pitch Tracking/Pitch Usage/Slider"
+
+# aggregate pitch files into dfs
+changeup_aggregate <- pitch_aggregate_function(changeup_path)
+curveball_aggregate <- pitch_aggregate_function(curveball_path)
+cutter_aggregate <- pitch_aggregate_function(cutter_path)
+fastball_aggregate <- pitch_aggregate_function(fastball_path)
+sinker_aggregate <- pitch_aggregate_function(sinker_path)
+slider_aggregate <- pitch_aggregate_function(slider_path)
+
+# list of all aggregate dfs
+master_list <- list(changeup_aggregate = changeup_aggregate,
+                    curveball_aggregate = curveball_aggregate,
+                    cutter_aggregate = cutter_aggregate,
+                    fastball_aggregate = fastball_aggregate,
+                    sinker_aggregate = sinker_aggregate,
+                    slider_aggregate = slider_aggregate)
+
+# write aggregate dfs into .csv files
+mapply(write.csv, 
+       master_list, 
+       file=paste0(names(master_list),
+                   '.csv'))
+
+# combine aggregate dfs into one master df
+master_pitch_aggregate <- rbind(changeup_aggregate,
+                          curveball_aggregate,
+                          cutter_aggregate,
+                          fastball_aggregate,
+                          sinker_aggregate,
+                          slider_aggregate)
+
+# write master df to .csv file
+write.csv(master_pitch_aggregate,
+          "Data/All Pitch Tracking/Pitch Usage/Aggregated Files/master_pitch_aggregate.csv",
+          row.names = TRUE)
+
+```
+
+```{r pitch_stats}
+
+library(tidyr)
+
+# aggregate all the stats from statcast era
+master_statcast_summary <- master_pitch_aggregate %>% 
+  group_by(year, pitch) %>% 
+  filter(total_pitches > 100) %>%
+  select(-c(player_name, total_pitches, pitch_percent, ba)) %>% 
+  drop_na() %>% 
+  summarise(pitch_count = sum(pitches),
+            sum_whiffs = sum(whiffs),
+            sum_swings = sum(swings),
+            sum_takes = sum(takes),
+            sum_abs = sum(abs),
+            sum_hits = sum(hits),
+            mean_spin_rate = weighted.mean(spin_rate, pitches),
+            mean_velocity = weighted.mean(velocity, pitches),
+            mean_release_extension = weighted.mean(release_extension, pitches),
+            mean_effective_speed = weighted.mean(effective_speed, pitches),
+            mean_eff_min_vel = weighted.mean(eff_min_vel, pitches),
+            mean_iso = weighted.mean(iso, pitches),
+            mean_babip = weighted.mean(babip, pitches),
+            mean_slg = weighted.mean(slg, pitches),
+            mean_woba = weighted.mean(woba, pitches),
+            mean_xwoba = weighted.mean(xwoba, pitches),
+            mean_xba = weighted.mean(xba, pitches),
+            mean_launch_speed = weighted.mean(launch_speed, pitches),
+            mean_launch_angle = weighted.mean(launch_angle, pitches)) %>% 
+  mutate(ba = sum_hits / sum_abs,
+         swing_percentage = sum_swings / pitch_count,
+         whiff_percentage = sum_whiffs / sum_swings,
+         contact_rate = (sum_swings - sum_whiffs) / sum_swings,
+         take_percentage = sum_takes / pitch_count)
+
+# save and export
+write.csv(master_summary,
+          "Data/All Pitch Tracking/Pitch Usage/Statistics/master_statcast_summary.csv",
+          row.names = TRUE)
+
+# aggregate all stats that are common to all pitch tracking
+master_allpitchtracking_summary <- master_pitch_aggregate %>% 
+  group_by(year, pitch) %>% 
+  filter(total_pitches > 100) %>%
+  select(-c(player_name, total_pitches, pitch_percent, ba,
+            spin_rate, release_extension, effective_speed, eff_min_vel,
+            xwoba, xba, launch_speed, launch_angle)) %>% 
+  drop_na() %>% 
+  summarise(pitch_count = sum(pitches),
+            sum_whiffs = sum(whiffs),
+            sum_swings = sum(swings),
+            sum_takes = sum(takes),
+            sum_abs = sum(abs),
+            sum_hits = sum(hits),
+            mean_velocity = weighted.mean(velocity, pitches),
+            mean_iso = weighted.mean(iso, pitches),
+            mean_babip = weighted.mean(babip, pitches),
+            mean_slg = weighted.mean(slg, pitches),
+            mean_woba = weighted.mean(woba, pitches)) %>% 
+  mutate(ba = sum_hits / sum_abs,
+         swing_percentage = sum_swings / pitch_count,
+         whiff_percentage = sum_whiffs / sum_swings,
+         contact_rate = (sum_swings - sum_whiffs) / sum_swings,
+         take_percentage = sum_takes / pitch_count)
+
+# save and export
+write.csv(master_summary,
+          "Data/All Pitch Tracking/Pitch Usage/Statistics/master_allpitchtracking_summary.csv",
+          row.names = TRUE)
+
+# calculate total # of pitches per year
+total_pitches <- master_allpitchtracking_summary %>% 
+  group_by(year) %>% 
+  summarise(total_pitches = sum(pitch_count)) %>% 
+  slice(rep(1:n(), each = 6)) %>% # rep 6 times to fit future need (see pitch_percentages)
+  as.data.frame()
+
+# calculate pitch usage %s
+
+library(tibble) # add_col fun
+
+pitch_percentages <- master_allpitchtracking_summary %>% 
+  select(year, pitch, pitch_count) %>% 
+  group_by(year) %>%
+  add_column(all_pitches = total_pitches$total_pitches) %>% 
+  mutate(pitch_usage = pitch_count/all_pitches)
+
+write.csv(pitch_percentages,
+          "Data/All Pitch Tracking/Pitch Usage/Statistics/pitch_percentages.csv",
+          row.names = TRUE)
+
+```
+
+```{r pitch_usage_plot}
+
+library(ggplot2)
+
+pitch_usage_plot <- ggplot(data = pitch_percentages,
+                           mapping = aes(x = year,
+                                         y = pitch_usage,
+                                         group = pitch)) +
+  geom_point(aes(color = pitch)) +
+  geom_line(aes(color = pitch)) +
+  custom_theme() +
+  theme(legend.box.background = element_rect(colour = "black"),
+        legend.title = element_text(hjust = 0.5, face = "bold"),
+        axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  labs(title = "Changes in Pitch Usage Over Time",
+       x = "Season",
+       y = "Percentage of Pitches Thrown (%)",
+       color = "Pitch")
+
+pitch_usage_plot
+
+```
+
+```{r pitch usage decrease highlight}
+
+pitch_usage_decrease_plot <- pitch_usage_plot +
+  scale_color_manual(values = c("#999999", "#999999", "#999999",
+                                "#FF0000", "#FF0000", "#999999"))
+
+pitch_usage_decrease_plot
+
+```
+
+```{r pitch usage increase highlight}
+
+pitch_usage_increase_plot <- pitch_usage_plot +
+  scale_color_manual(values = c("#FFFF00", "#FFFF00", "#00FF00",
+                                "#999999", "#999999", "#00FF00"))
+
+pitch_usage_increase_plot
+
+```
+
+```{r usage_change_calcs}
+
+library(scales) # percentages
+library(reactablefmtr) # pretty tables
+
+pitch_percentages_changes <- pitch_percentages %>% 
+  group_by(pitch) %>% 
+  mutate(usage_change = pitch_usage - pitch_usage[1]) %>% 
+  mutate(usage_change_percent = (pitch_usage / pitch_usage[1])-1) %>%
+  filter(year == 2022)
+
+pitch_percentages_changes_table <- pitch_percentages_changes %>% 
+  select(pitch, usage_change_percent) %>% 
+  rename("Pitch" = pitch,
+         'Change' = usage_change_percent) %>% 
+  as.data.frame()
+
+
+pitch_percentages_changes_table <- reactable(
+  pitch_percentages_changes_table,
+  pagination = FALSE,
+  defaultSorted = 'Change',
+  defaultSortOrder = "asc",
+  columns = (list(Pitch = colDef(width = 100),
+                  'Change' = colDef(width = 200,
+                                    align = "center"))),
+  defaultColDef = colDef(cell = data_bars(pitch_percentages_changes_table,
+                                          number_fmt = scales::percent,
+                                          text_position = "outside-end",
+                                          fill_color = c("red", "blue")))) %>% 
+  add_title("Change in Pitch Usage") %>% 
+  add_subtitle("From 2008 to 2022")
+
+pitch_percentages_changes_table
+
+```

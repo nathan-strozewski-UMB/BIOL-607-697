@@ -1,0 +1,119 @@
+---
+title: "Model"
+author: "Nathan Strozewski"
+date: "2022-12-09"
+output: html_document
+---
+
+```{r slider data}
+
+slider_model_df <- master_pitch_aggregate %>%  
+  filter(year > 2014) %>% 
+  filter(pitch == "Slider")
+
+```
+
+
+```{r launch speed distribution}
+
+
+
+slider_launch_speed_dist <- ggplot(data = slider_model_df,
+                                   mapping = aes(x = launch_speed))
+
+
+
+
+```
+
+
+```{r spin_rate vs launch speed}
+
+library(ggplot2)
+
+spin_rate_plot <- ggplot(data = slider_model_df,
+                         mapping = aes(x = spin_rate,
+                                       y = launch_speed)) +
+  geom_point(alpha = 0.5) +
+  xlim(1500, 3500) +
+  ylim(70, 105) +
+  geom_smooth(method = "lm",
+              se = FALSE,
+              fullrange = TRUE,
+              color = "red") +
+  custom_theme()
+
+spin_rate_plot
+
+```
+
+
+```{r velocity vs launch speed}
+
+spin_velocity_plot <- ggplot(data = slider_model_df,
+                         mapping = aes(x = velocity,
+                                       y = launch_speed)) +
+  geom_point(alpha = 0.5) +
+  xlim(75, 95) +
+  ylim(70, 105) +
+  geom_smooth(method = "lm",
+              se = FALSE,
+              fullrange = TRUE,
+              color = "red") +
+  custom_theme()
+
+spin_velocity_plot
+
+```
+
+```{r release vs launch speed}
+
+spin_release_plot <- ggplot(data = slider_model_df,
+                            mapping = aes(x = release_extension,
+                                          y = launch_speed)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "lm",
+              se = FALSE,
+              fullrange = TRUE,
+              color = "red") +
+  xlim(4.5, 7.5) +
+  ylim(70, 105) +
+  custom_theme()
+
+spin_release_plot
+
+```
+
+
+
+```{r model}
+
+library(dplyr)
+
+
+
+whiffs_model <- lm(whiffs ~ spin_rate + velocity + release_extension,
+                data = slider_model_df)
+
+ba_glm <- glm(launch_speed ~ spin_rate + velocity + release_extension,
+              family = "",
+              data = slider_model_df)
+
+library(performance)
+check_model(whiffs_model)
+r2(ba_model)
+
+check_model(ba_glm)
+r2(ba_glm)
+
+
+
+
+```
+
+
+
+This looks good - PPC is perfect match horizontally but lower peak in predicted data than actual. this is possibly from not having pitch movement data
+
+do i need to plot the distribution of launch_speed to see what type of model to run?
+bar chart of launch_speed

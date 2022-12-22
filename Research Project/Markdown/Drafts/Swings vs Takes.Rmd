@@ -1,0 +1,257 @@
+---
+title: "Pitch Outcomes"
+author: "Nathan Strozewski"
+date: "2022-12-04"
+output: html_document
+---
+
+Uses objects created in Pitch Usage.Rmd
+
+
+Need a table for all plots
+
+```{r swing and contact rate plots}
+
+library(ggplot2)
+library(ggpubr)
+
+swing_plot <- ggplot(data = master_allpitchtracking_summary,
+                     mapping = aes(x = year,
+                                   y = swing_percentage,
+                                   group = pitch)) +
+  geom_line(aes(color = pitch)) +
+  geom_point(aes(color = pitch)) +
+  custom_theme() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1, size = 8)) +
+  labs(y = "Swing Rate",
+       color = "Pitch")
+
+contact_plot <- ggplot(data = master_allpitchtracking_summary,
+                                     mapping = aes(x = year,
+                                                   y = contact_rate,
+                                                   group = pitch)) +
+  geom_line(aes(color = pitch)) +
+  geom_point(aes(color = pitch)) +
+  custom_theme() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1, size = 8)) +
+  labs(y = "Contact Rate",
+       color = "Pitch")
+
+swing_contact_plot <- ggarrange(swing_plot,
+                                contact_plot,
+                                ncol = 2,
+                                nrow = 1,
+                                common.legend = TRUE,
+                                legend = "right")
+
+swing_contact_plot
+
+```
+
+Swing rate is lowest for curveballs. Slider swing rate is middle of the pack.
+
+Contact rate is hgihest for sliders. Why would pitchers throw so many more sliders when batters hit them?
+
+Sliders actually lead to the most contact on swings. Why would pitchers use it more then? Isn't contact bad because it can lead to baserunners and runs? Maybe the contact sucks...fewer hits?
+
+```{r batting average plot}
+
+ba_plot <- ggplot(data = master_summary,
+                  mapping = aes(x = year,
+                                y = ba,
+                                group = pitch)) +
+  geom_line(aes(color = pitch)) +
+  geom_point(aes(color = pitch)) +
+  custom_theme() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  labs(y = "Batting Average",
+       color = "Pitch")
+
+xba_plot <- ggplot(data = master_summary,
+                  mapping = aes(x = year,
+                                y = mean_xba,
+                                group = pitch)) +
+  geom_line(aes(color = pitch)) +
+  geom_point(aes(color = pitch)) +
+  custom_theme() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  labs(y = "Expected Batting Average",
+       color = "Pitch")
+
+babip_plot <- ggplot(data = master_summary,
+                     mapping = aes(x = year,
+                                   y = mean_babip,
+                                   group = pitch)) +
+  geom_line(aes(color = pitch)) +
+  geom_point(aes(color = pitch)) +
+  custom_theme() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  labs(y = "BABIP",
+       color = "Pitch")
+
+batting_averages_plot <- ggarrange(ba_plot,
+                                   xba_plot,
+                                   babip_plot,
+                                   ncol = 3,
+                                   nrow = 1,
+                                   common.legend = TRUE,
+                                   legend = "right")
+
+batting_averages_plot
+
+```
+
+Well look at that. BA and xBA are lowest against sliders. It is also low against curveballs - but remember that batters swing at fewer curveballs. They must be better at identifying curves than sliders. High swing rate and contact rate with low BA, xBA and BABIP maximizes positive pitcher outcomes.
+
+What about launch speed? If balls are being hit weakly, this supports the observed data for BA, xBA, and BABIP.
+
+And what about strikeouts? If a large portion of pitches result in strikeout or weak contact, then the slider would be the optimal pitch.
+
+NEED TO ADD LEGEND AND CREATE TABLE SHOWING DIFFERENCE
+
+
+Look at strikeouts, walks, HRs, launch speed + angle
+spin rate relative to other pitches
+how spin rate has changed over time
+
+Massive drop in BABIP starting in 2020. A bit of a bounceback in 2021
+
+```{r slg}
+
+slg_plot <- ggplot(data = master_summary,
+                     mapping = aes(x = year,
+                                y = mean_slg,
+                                group = pitch)) +
+  geom_point(aes(color = pitch)) +
+  geom_line(aes(color = pitch)) +
+  custom_theme() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  labs(x = "Season",
+       y = "Slg.",
+       color = "Pitch")
+
+iso_plot <- ggplot(data = master_summary,
+                     mapping = aes(x = year,
+                                   y = mean_iso,
+                                   group = pitch)) +
+  geom_line(aes(color = pitch)) +
+  geom_point(aes(color = pitch)) +
+  custom_theme() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  labs(x = "Season",
+       y = "Iso.",
+       color = "Pitch")
+
+slg_iso_plot<- ggarrange(slg_plot,
+                         iso_plot,
+                         ncol = 2,
+                         nrow = 1,
+                         common.legend = TRUE,
+                         legend = "right")
+
+slg_iso_plot
+
+```
+
+```{r iso}
+
+iso_plot <- ggplot(data = master_summary,
+                     mapping = aes(x = year,
+                                   y = mean_iso,
+                                   group = pitch)) +
+  geom_line(aes(color = pitch)) +
+  geom_point(aes(color = pitch)) +
+  custom_theme() +
+  theme(legend.box.background = element_rect(colour = "black"),
+        legend.title = element_text(hjust = 0.5, face = "bold"),
+        axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  labs(title = "Isolated Power (Iso.) by Pitch",
+       x = "Season",
+       y = "Iso.",
+       color = "Pitch")
+
+iso_plot
+
+```
+
+```{r woba vs xwoba}
+
+woba_vs_xwoba_plot <- ggplot(data = master_summary,
+                             mapping = aes(x = year,
+                             group = pitch)) +
+  geom_line(aes(y = mean_woba,
+                group = pitch,
+                color = mean_woba),
+           linetype = 1,
+           color = "blue") +
+  geom_line(aes(y = mean_xwoba,
+                group = pitch,
+                color = mean_xwoba),
+            color = "red") +
+  facet_wrap(vars(pitch)) +
+  custom_theme() +
+  theme(legend.box.background = element_rect(colour = "black"),
+        legend.title = element_text(hjust = 0.5, face = "bold"),
+        axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  labs(title = "Weighted On-Base Averages By Pitch",
+       x = "Season",
+       y = "On-Base Average",
+       color = "On-Base Average")
+
+woba_vs_xwoba_plot
+
+```
+
+```{r launch spd and angle}
+
+ls_plot <- ggplot(data = master_summary,
+                  mapping = aes(x = year,
+                                group = pitch,
+                                y = mean_launch_speed)) +
+  geom_line(aes(color = pitch)) +
+  geom_point(aes(color = pitch)) +
+  custom_theme() +
+  theme(legend.box.background = element_rect(colour = "black"),
+        legend.title = element_text(hjust = 0.5, face = "bold"),
+        axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  labs(title = "Launch Speed By Pitch",
+       x = "Season",
+       y = "Launch Speed (mph)",
+       color = "Pitch")
+
+ls_plot
+
+```
+
+```{r launch angle}
+
+la_plot <- ggplot(data = master_summary,
+                  mapping = aes(x = year,
+                                group = pitch,
+                                y = mean_launch_angle)) +
+  geom_line(aes(color = pitch)) +
+  geom_point(aes(color = pitch)) +
+  custom_theme() +
+  theme(legend.box.background = element_rect(colour = "black"),
+        legend.title = element_text(hjust = 0.5, face = "bold"),
+        axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  labs(title = "Launch Speed By Pitch",
+       x = "Season",
+       y = "Launch Angle (degrees)",
+       color = "Pitch")
+
+la_plot
+
+```
+
+
+
+HEAT MAP OF LAUNCH ANGLE VS LAUNCH SPEED - FACET BY PITCH
+THIS WILL SHOW THE MOST COMMON INTERSECTIONS BETWEEN THE TWO
+
+install.packages("baseballr")
+https://billpetti.github.io/baseballr/
+
+https://baseballwithr.wordpress.com/2016/08/15/exploring-statcast-data-from-baseball-savant/
+
+https://baseballwithr.wordpress.com/category/pitchrx/
