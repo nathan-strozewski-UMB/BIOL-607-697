@@ -1,0 +1,37 @@
+---
+format: revealjs
+editor: visual
+output:
+  ioslides_presentation: default
+  beamer_presentation: default
+---
+
+## Slid(er)ing Into Batters' DMs:
+
+Why and How Usage of the Slider Has Changed Across Major League Baseball
+
+Nate Strozewski
+
+------------------------------------------------------------------------
+
+!\[\]\<div style='position:relative; padding-bottom:calc(56.25% + 44px)'\>\<iframe src='https://gfycat.com/ifr/BraveRepulsiveAmethystinepython' frameborder='0' scrolling='no' width='100%' height='100%' style='position:absolute;top:0;left:0;' allowfullscreen\>\</iframe\>\</div\>\<p\> \<a href="https://gfycat.com/braverepulsiveamethystinepython"\>via Gfycat\</a\>\</p\>
+
+    <video width="320" height="240" controls>
+      <source src="bauer pitch overlay.mp4" type="video/mp4">
+    </video>
+
+------------------------------------------------------------------------
+
+![](Presentation/Images/bauer%20pitch%20overlay.mp4){fig-align="center"}
+
+------------------------------------------------------------------------
+
+![](Presentation/Images/Pitch%20Usage%20Over%20Time.png){fig-align="left"}
+
+![](Presentation/Images/Pitch%20Usage%20Table.png){fig-align="right"}
+
+## Other vars
+
+## Model
+
+## Results
